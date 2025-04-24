@@ -171,8 +171,8 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
             "mediaType": media_type,
             "mediaId": media_data["id"],
             "is4k": False,
-            "serverId": 0,
-            "profileId": 0,
+            "serverId": 1,  # Default ServerID's are 1
+            "profileId": 1,
             "rootFolder": "",
             "languageProfileId": 0,
             "userId": config_data.get("overseerr_user_id"),

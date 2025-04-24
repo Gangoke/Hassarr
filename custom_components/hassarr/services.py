@@ -122,12 +122,13 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
     """
     _LOGGER.info(f"Received call data: {call.data}")
     title = call.data.get("title")
+    seasons = call.data.get("seasons", [1])  # Default to season 1 if not provided
 
     if not title:
         _LOGGER.error("Title is missing in the service call data")
         return
 
-    _LOGGER.info(f"Title received: {title}")
+    _LOGGER.info(f"Title received: {title}, Seasons: {seasons}")
 
     # Access stored configuration data
     config_data = hass.data[DOMAIN]
@@ -159,12 +160,11 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
         # Try with http if https fails
         search_url = urljoin(url_http, f"api/v1/search?query={title}")
         _LOGGER.error(f"Retrying search for media with URL: {search_url}")
-        _LOGGER.info(f"Retrying search for media with URL: {search_url}")
         search_results = fetch_data(search_url, headers)
 
     if search_results and search_results.get("results"):
         media_data = search_results["results"][0]
-        _LOGGER.error(f"Media data: {media_data}")
+        _LOGGER.info(f"Media data: {media_data}")
 
         # Prepare payload
         payload = {
@@ -176,7 +176,7 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
             "rootFolder": "",
             "languageProfileId": 0,
             "userId": config_data.get("overseerr_user_id"),
-            "seasons": "all" if media_type == "tv" else []
+            "seasons": [] if seasons == "all" else seasons  # Use empty list for all seasons
         }
         if media_type == "tv":
             tvdb_id = media_data.get("tvdbId")

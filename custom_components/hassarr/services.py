@@ -122,13 +122,25 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
     """
     _LOGGER.info(f"Received call data: {call.data}")
     title = call.data.get("title")
+    
+    # Access stored configuration data
+    config_data = hass.data[DOMAIN]
+    
+    # Get seasons from call data, or use the configured default
+    default_season = config_data.get("default_season", "All")
+    if default_season == "Season 1":
+        default_seasons = [1]
+    else:  # "All"
+        default_seasons = "all"
+    
+    seasons = call.data.get("seasons", default_seasons)
 
     if not title:
         _LOGGER.error("Title is missing in the service call data")
         return
 
     _LOGGER.info(f"Title received: {title}")
-
+    
     # Access stored configuration data
     config_data = hass.data[DOMAIN]
 
@@ -176,7 +188,7 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
             "rootFolder": "",
             "languageProfileId": 0,
             "userId": config_data.get("overseerr_user_id"),
-            "seasons": "all" if media_type == "tv" else []
+            "seasons": seasons if media_type == "tv" else []
         }
         if media_type == "tv":
             tvdb_id = media_data.get("tvdbId")

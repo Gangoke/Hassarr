@@ -77,10 +77,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._get_reconfigure_entry(),
                 data=data
             )
-            return self.async_update_reload_and_abort(
-                self._get_reconfigure_entry(),
-                data_updates=user_input,
-            )
+            return await self.async_step_reconfigure_overseerr_defaults()
 
         # Get existing data to pre-fill the form
         existing_data = self._get_reconfigure_entry().data
@@ -95,6 +92,32 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reconfigure_overseerr_user",
             data_schema=vol.Schema({
                 vol.Required("overseerr_user_id"): vol.In(user_options),
+            })
+        )
+
+    async def async_step_reconfigure_overseerr_defaults(self, user_input=None):
+        """Handle reconfiguration for Overseerr default settings."""
+        if user_input is not None:
+            # Update the existing config entry
+            data = dict(self._get_reconfigure_entry().data)
+            data.update(user_input)
+            self.hass.config_entries.async_update_entry(
+                self._get_reconfigure_entry(),
+                data=data
+            )
+            return self.async_update_reload_and_abort(
+                self._get_reconfigure_entry(),
+                data_updates=user_input,
+            )
+
+        # Get existing data to pre-fill the form
+        existing_data = self._get_reconfigure_entry().data
+        default_season = existing_data.get("default_season", "All")
+
+        return self.async_show_form(
+            step_id="reconfigure_overseerr_defaults",
+            data_schema=vol.Schema({
+                vol.Required("default_season", default=default_season): vol.In(["All", "Season 1"]),
             })
         )
 
@@ -237,12 +260,28 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 })
             )
 
-        # Create the entry with the selected user ID
-        user_input.update({
+        # Save the user selection and proceed to defaults step
+        self.overseerr_user_id = user_input["overseerr_user_id"]
+        return await self.async_step_overseerr_defaults()
+
+    async def async_step_overseerr_defaults(self, user_input=None):
+        if user_input is None:
+            return self.async_show_form(
+                step_id="overseerr_defaults",
+                data_schema=vol.Schema({
+                    vol.Required("default_season", default="All"): vol.In(["All", "Season 1"]),
+                })
+            )
+
+        # Create the entry with all the collected data
+        data = {
             "overseerr_url": self.overseerr_url,
-            "overseerr_api_key": self.overseerr_api_key
-        })
-        return self.async_create_entry(title="Hassarr", data=user_input)
+            "overseerr_api_key": self.overseerr_api_key,
+            "overseerr_user_id": self.overseerr_user_id,
+            "default_season": user_input["default_season"],
+            "integration_type": "Overseerr"
+        }
+        return self.async_create_entry(title="Hassarr", data=data)
 
     async def _fetch_overseerr_users(self, url, api_key):
         """Fetch users from the Overseerr API."""

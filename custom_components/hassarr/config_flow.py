@@ -100,14 +100,15 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # Update the existing config entry
             data = dict(self._get_reconfigure_entry().data)
-            data.update(user_input)
+            # Map the descriptive field name back to the internal name
+            data["default_season"] = user_input["default_season_behavior"]
             self.hass.config_entries.async_update_entry(
                 self._get_reconfigure_entry(),
                 data=data
             )
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
-                data_updates=user_input,
+                data_updates={"default_season": user_input["default_season_behavior"]},
             )
 
         # Get existing data to pre-fill the form
@@ -117,7 +118,11 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure_overseerr_defaults",
             data_schema=vol.Schema({
-                vol.Required("default_season", default=default_season): vol.In(["All", "Season 1"]),
+                vol.Required(
+                    "default_season_behavior", 
+                    default=default_season,
+                    description="Default Season Behavior - Sets the default season behavior when no season(s) specified"
+                ): vol.In(["All", "Season 1"]),
             })
         )
 
@@ -269,7 +274,11 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="overseerr_defaults",
                 data_schema=vol.Schema({
-                    vol.Required("default_season", default="All"): vol.In(["All", "Season 1"]),
+                    vol.Required(
+                        "default_season_behavior", 
+                        default="All",
+                        description="Default Season Behavior - Sets the default season behavior when no season(s) specified"
+                    ): vol.In(["All", "Season 1"]),
                 })
             )
 
@@ -278,7 +287,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "overseerr_url": self.overseerr_url,
             "overseerr_api_key": self.overseerr_api_key,
             "overseerr_user_id": self.overseerr_user_id,
-            "default_season": user_input["default_season"],
+            "default_season": user_input["default_season_behavior"],  # Map back to internal name
             "integration_type": "Overseerr"
         }
         return self.async_create_entry(title="Hassarr", data=data)

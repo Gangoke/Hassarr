@@ -440,7 +440,8 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.overseerr_url, self.overseerr_api_key, "radarr"
             )
             
-            # Create options for selection
+            # Create options for selection and store the servers for later use
+            self.radarr_servers = {server["id"]: server for server in radarr_servers}
             server_options = {server["id"]: server["name"] for server in radarr_servers}
             
             # If no servers are available, skip to Sonarr server selection
@@ -455,9 +456,13 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 })
             )
             
-        # Save the selected Radarr server and proceed to Radarr quality profiles
+        # Save the selected Radarr server and its active profile
         self.radarr_server_id = user_input["radarr_server_id"]
-        return await self.async_step_overseerr_radarr_profile()
+        selected_server = self.radarr_servers[self.radarr_server_id]
+        self.radarr_profile_id = selected_server.get("activeProfileId")
+        
+        # Continue to Sonarr server selection
+        return await self.async_step_overseerr_sonarr_server()
         
     async def async_step_overseerr_radarr_profile(self, user_input=None):
         """Select Radarr quality profile for the selected server."""
@@ -560,19 +565,19 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "default_season": user_input["default_season_behavior"],
             "integration_type": "Overseerr"
         }
-        
+
         # Add Radarr server and profile if selected
         if hasattr(self, 'radarr_server_id') and self.radarr_server_id is not None:
             data["radarr_server_id"] = self.radarr_server_id
             if hasattr(self, 'radarr_profile_id'):
                 data["radarr_profile_id"] = self.radarr_profile_id
-            
+
         # Add Sonarr server and profile if selected
         if hasattr(self, 'sonarr_server_id') and self.sonarr_server_id is not None:
             data["sonarr_server_id"] = self.sonarr_server_id
             if hasattr(self, 'sonarr_profile_id'):
                 data["sonarr_profile_id"] = self.sonarr_profile_id
-            
+
         return self.async_create_entry(title="Hassarr", data=data)
 
     async def _fetch_overseerr_users(self, url, api_key):

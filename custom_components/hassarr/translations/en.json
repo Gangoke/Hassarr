@@ -41,38 +41,13 @@
           "overseerr_user_id": "Overseerr User"
         }
       },
-      "overseerr_defaults": {
-        "title": "Overseerr Default Settings",
+      "overseerr_servers_and_defaults": {
+        "title": "Configure Overseerr Servers and Default Settings",
+        "description": "Select which Radarr and Sonarr servers to use for requests, and set default season behavior.",
         "data": {
+          "radarr_server_id": "Radarr Server",
+          "sonarr_server_id": "Sonarr Server",
           "default_season_behavior": "Default Season Behavior - Configure how Overseerr handles requests of shows when no seasons are specified"
-        }
-      },
-      "overseerr_radarr_server": {
-        "title": "Overseerr Radarr Server",
-        "description": "Select which Radarr server configured in Overseerr to use for movie requests",
-        "data": {
-          "radarr_server_id": "Radarr Server"
-        }
-      },
-      "overseerr_radarr_profile": {
-        "title": "Radarr Quality Profile",
-        "description": "Select which quality profile to use for movie requests",
-        "data": {
-          "radarr_profile_id": "Quality Profile"
-        }
-      },
-      "overseerr_sonarr_server": {
-        "title": "Overseerr Sonarr Server",
-        "description": "Select which Sonarr server configured in Overseerr to use for TV show requests",
-        "data": {
-          "sonarr_server_id": "Sonarr Server"
-        }
-      },
-      "overseerr_sonarr_profile": {
-        "title": "Sonarr Quality Profile",
-        "description": "Select which quality profile to use for TV show requests",
-        "data": {
-          "sonarr_profile_id": "Quality Profile"
         }
       },
       "reconfigure": {
@@ -97,12 +72,6 @@
           "overseerr_user_id": "Overseerr User"
         }
       },
-      "reconfigure_overseerr_defaults": {
-        "title": "Overseerr Default Settings",
-        "data": {
-          "default_season_behavior": "Default Season Behavior - Configure how Overseerr handles requests of shows when no seasons are specified"
-        }
-      },
       "reconfigure_radarr_sonarr": {
         "title": "Update Radarr & Sonarr Connection",
         "description": "Update your Radarr and Sonarr server details",
@@ -121,32 +90,13 @@
           "sonarr_quality_profile_id": "Sonarr Quality Profile"
         }
       },
-      "reconfigure_overseerr_radarr_server": {
-        "title": "Update Overseerr Radarr Server",
-        "description": "Select which Radarr server configured in Overseerr to use for movie requests",
+      "reconfigure_overseerr_servers_and_defaults": {
+        "title": "Reconfigure Overseerr Servers and Default Settings",
+        "description": "Update which Radarr and Sonarr servers to use for requests, and set default season behavior.",
         "data": {
-          "radarr_server_id": "Radarr Server"
-        }
-      },
-      "reconfigure_overseerr_radarr_profile": {
-        "title": "Update Radarr Quality Profile",
-        "description": "Select which quality profile to use for movie requests",
-        "data": {
-          "radarr_profile_id": "Quality Profile"
-        }
-      },
-      "reconfigure_overseerr_sonarr_server": {
-        "title": "Update Overseerr Sonarr Server",
-        "description": "Select which Sonarr server configured in Overseerr to use for TV show requests",
-        "data": {
-          "sonarr_server_id": "Sonarr Server"
-        }
-      },
-      "reconfigure_overseerr_sonarr_profile": {
-        "title": "Update Sonarr Quality Profile",
-        "description": "Select which quality profile to use for TV show requests",
-        "data": {
-          "sonarr_profile_id": "Quality Profile"
+          "radarr_server_id": "Radarr Server",
+          "sonarr_server_id": "Sonarr Server",
+          "default_season_behavior": "Default Season Behavior"
         }
       }
     },

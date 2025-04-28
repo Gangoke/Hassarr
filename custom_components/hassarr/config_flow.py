@@ -80,7 +80,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._get_reconfigure_entry(),
                 data=data
             )
-            return await self.async_step_reconfigure_overseerr_radarr_server()
+            return await self.async_step_reconfigure_overseerr_servers_and_defaults()
 
         # Get existing data to pre-fill the form
         existing_data = self._get_reconfigure_entry().data
@@ -179,15 +179,28 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Update the existing config entry
             data = dict(self._get_reconfigure_entry().data)
             data.update(user_input)
+            
+            # If a server was selected, get its active profile ID
+            if "sonarr_server_id" in user_input and user_input["sonarr_server_id"]:
+                # Fetch the server data to get the activeProfileId
+                sonarr_servers = await self._fetch_overseerr_servers(
+                    existing_data.get("overseerr_url"), 
+                    existing_data.get("overseerr_api_key"), 
+                    "sonarr"
+                )
+                
+                for server in sonarr_servers:
+                    if server["id"] == user_input["sonarr_server_id"]:
+                        data["sonarr_profile_id"] = server.get("activeProfileId")
+                        break
+            
             self.hass.config_entries.async_update_entry(
                 self._get_reconfigure_entry(),
                 data=data
             )
-            # Skip to profile selection if server was selected, otherwise go to defaults
-            if "sonarr_server_id" in user_input and user_input["sonarr_server_id"]:
-                return await self.async_step_reconfigure_overseerr_sonarr_profile()
-            else:
-                return await self.async_step_reconfigure_overseerr_defaults()
+            
+            # Skip directly to defaults
+            return await self.async_step_reconfigure_overseerr_defaults()
 
         # Get existing data
         existing_data = self._get_reconfigure_entry().data
@@ -428,135 +441,61 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 })
             )
 
-        # Save the user selection and proceed to Radarr server selection
+        # Save the user selection and proceed to the combined server and defaults selection
         self.overseerr_user_id = user_input["overseerr_user_id"]
-        return await self.async_step_overseerr_radarr_server()
-        
-    async def async_step_overseerr_radarr_server(self, user_input=None):
-        """Select Radarr server from Overseerr configuration."""
+        return await self.async_step_overseerr_servers_and_defaults()
+
+    async def async_step_overseerr_servers_and_defaults(self, user_input=None):
+        """Select Radarr/Sonarr servers and default behavior in one step."""
         if user_input is None:
             # Fetch Radarr servers from Overseerr API
             radarr_servers = await self._fetch_overseerr_servers(
                 self.overseerr_url, self.overseerr_api_key, "radarr"
             )
-            
-            # Create options for selection and store the servers for later use
+            radarr_options = {server["id"]: server["name"] for server in radarr_servers}
             self.radarr_servers = {server["id"]: server for server in radarr_servers}
-            server_options = {server["id"]: server["name"] for server in radarr_servers}
             
-            # If no servers are available, skip to Sonarr server selection
-            if not server_options:
-                self.radarr_server_id = None
-                return await self.async_step_overseerr_sonarr_server()
-                
-            return self.async_show_form(
-                step_id="overseerr_radarr_server",
-                data_schema=vol.Schema({
-                    vol.Required("radarr_server_id"): vol.In(server_options),
-                })
-            )
-            
-        # Save the selected Radarr server and its active profile
-        self.radarr_server_id = user_input["radarr_server_id"]
-        selected_server = self.radarr_servers[self.radarr_server_id]
-        self.radarr_profile_id = selected_server.get("activeProfileId")
-        
-        # Continue to Sonarr server selection
-        return await self.async_step_overseerr_sonarr_server()
-        
-    async def async_step_overseerr_radarr_profile(self, user_input=None):
-        """Select Radarr quality profile for the selected server."""
-        if user_input is None:
-            # Skip if no Radarr server was selected
-            if getattr(self, 'radarr_server_id', None) is None:
-                return await self.async_step_overseerr_sonarr_server()
-                
-            # Fetch quality profiles from Overseerr API for the selected Radarr server
-            profiles = await self._fetch_overseerr_profiles(
-                self.overseerr_url, 
-                self.overseerr_api_key,
-                "radarr",
-                self.radarr_server_id
-            )
-            
-            profile_options = {profile["id"]: profile["name"] for profile in profiles}
-            
-            return self.async_show_form(
-                step_id="overseerr_radarr_profile",
-                data_schema=vol.Schema({
-                    vol.Required("radarr_profile_id"): vol.In(profile_options),
-                })
-            )
-            
-        # Save the selected quality profile and continue to Sonarr server selection
-        self.radarr_profile_id = user_input["radarr_profile_id"]
-        return await self.async_step_overseerr_sonarr_server()
-        
-    async def async_step_overseerr_sonarr_server(self, user_input=None):
-        """Select Sonarr server from Overseerr configuration."""
-        if user_input is None:
             # Fetch Sonarr servers from Overseerr API
             sonarr_servers = await self._fetch_overseerr_servers(
                 self.overseerr_url, self.overseerr_api_key, "sonarr"
             )
+            sonarr_options = {server["id"]: server["name"] for server in sonarr_servers}
+            self.sonarr_servers = {server["id"]: server for server in sonarr_servers}
             
-            # Create options for selection
-            server_options = {server["id"]: server["name"] for server in sonarr_servers}
+            # Create schema
+            schema = {}
             
-            # If no servers are available, skip to default settings
-            if not server_options:
-                self.sonarr_server_id = None
-                return await self.async_step_overseerr_defaults()
+            # Add Radarr server selection if available
+            if radarr_options:
+                schema[vol.Optional("radarr_server_id")] = vol.In(radarr_options)
+            
+            # Add Sonarr server selection if available
+            if sonarr_options:
+                schema[vol.Optional("sonarr_server_id")] = vol.In(sonarr_options)
                 
-            return self.async_show_form(
-                step_id="overseerr_sonarr_server",
-                data_schema=vol.Schema({
-                    vol.Required("sonarr_server_id"): vol.In(server_options),
-                })
-            )
+            # Always add default season behavior
+            schema[vol.Required("default_season_behavior", default="All")] = vol.In(["All", "Season 1"])
             
-        # Save the selected Sonarr server and proceed to Sonarr quality profiles
-        self.sonarr_server_id = user_input["sonarr_server_id"]
-        return await self.async_step_overseerr_sonarr_profile()
+            return self.async_show_form(
+                step_id="overseerr_servers_and_defaults",
+                data_schema=vol.Schema(schema)
+            )
+
+        # Save the selected options
+        if "radarr_server_id" in user_input and user_input["radarr_server_id"]:
+            self.radarr_server_id = user_input["radarr_server_id"]
+            selected_radarr = self.radarr_servers[self.radarr_server_id]
+            self.radarr_profile_id = selected_radarr.get("activeProfileId")
+        else:
+            self.radarr_server_id = None
+            
+        if "sonarr_server_id" in user_input and user_input["sonarr_server_id"]:
+            self.sonarr_server_id = user_input["sonarr_server_id"]
+            selected_sonarr = self.sonarr_servers[self.sonarr_server_id]
+            self.sonarr_profile_id = selected_sonarr.get("activeProfileId")
+        else:
+            self.sonarr_server_id = None
         
-    async def async_step_overseerr_sonarr_profile(self, user_input=None):
-        """Select Sonarr quality profile for the selected server."""
-        if user_input is None:
-            # Skip if no Sonarr server was selected
-            if getattr(self, 'sonarr_server_id', None) is None:
-                return await self.async_step_overseerr_defaults()
-                
-            # Fetch quality profiles from Overseerr API for the selected Sonarr server
-            profiles = await self._fetch_overseerr_profiles(
-                self.overseerr_url, 
-                self.overseerr_api_key,
-                "sonarr",
-                self.sonarr_server_id
-            )
-            
-            profile_options = {profile["id"]: profile["name"] for profile in profiles}
-            
-            return self.async_show_form(
-                step_id="overseerr_sonarr_profile",
-                data_schema=vol.Schema({
-                    vol.Required("sonarr_profile_id"): vol.In(profile_options),
-                })
-            )
-            
-        # Save the selected quality profile and continue to default settings
-        self.sonarr_profile_id = user_input["sonarr_profile_id"]
-        return await self.async_step_overseerr_defaults()
-
-    async def async_step_overseerr_defaults(self, user_input=None):
-        """Configure default settings for Overseerr."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="overseerr_defaults",
-                data_schema=vol.Schema({
-                    vol.Required("default_season_behavior", default="All"): vol.In(["All", "Season 1"]),
-                })
-            )
-
         # Create the entry with all the collected data
         data = {
             "overseerr_url": self.overseerr_url,
@@ -579,6 +518,94 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data["sonarr_profile_id"] = self.sonarr_profile_id
 
         return self.async_create_entry(title="Hassarr", data=data)
+
+    async def async_step_reconfigure_overseerr_servers_and_defaults(self, user_input=None):
+        """Handle reconfiguration for servers and defaults in one step."""
+        if user_input is not None:
+            # Update the existing config entry
+            data = dict(self._get_reconfigure_entry().data)
+            
+            # Update with the new selections
+            if "radarr_server_id" in user_input:
+                data["radarr_server_id"] = user_input["radarr_server_id"]
+                # Get the active profile ID for the selected Radarr server
+                if user_input["radarr_server_id"]:
+                    radarr_servers = await self._fetch_overseerr_servers(
+                        data.get("overseerr_url"), 
+                        data.get("overseerr_api_key"), 
+                        "radarr"
+                    )
+                    for server in radarr_servers:
+                        if server["id"] == user_input["radarr_server_id"]:
+                            data["radarr_profile_id"] = server.get("activeProfileId")
+                            break
+                else:
+                    # If server deselected, remove profile too
+                    if "radarr_profile_id" in data:
+                        del data["radarr_profile_id"]
+                        
+            if "sonarr_server_id" in user_input:
+                data["sonarr_server_id"] = user_input["sonarr_server_id"]
+                # Get the active profile ID for the selected Sonarr server
+                if user_input["sonarr_server_id"]:
+                    sonarr_servers = await self._fetch_overseerr_servers(
+                        data.get("overseerr_url"), 
+                        data.get("overseerr_api_key"), 
+                        "sonarr"
+                    )
+                    for server in sonarr_servers:
+                        if server["id"] == user_input["sonarr_server_id"]:
+                            data["sonarr_profile_id"] = server.get("activeProfileId")
+                            break
+                else:
+                    # If server deselected, remove profile too
+                    if "sonarr_profile_id" in data:
+                        del data["sonarr_profile_id"]
+            
+            # Update default season behavior
+            data["default_season"] = user_input.get("default_season_behavior", "All")
+            
+            self.hass.config_entries.async_update_entry(
+                self._get_reconfigure_entry(),
+                data=data
+            )
+            
+            return self.async_update_reload_and_abort(
+                self._get_reconfigure_entry(),
+                data_updates=data,
+            )
+
+        # Get existing data
+        existing_data = self._get_reconfigure_entry().data
+        overseerr_url = existing_data.get("overseerr_url")
+        overseerr_api_key = existing_data.get("overseerr_api_key")
+
+        # Fetch Radarr servers from Overseerr API
+        radarr_servers = await self._fetch_overseerr_servers(overseerr_url, overseerr_api_key, "radarr")
+        radarr_options = {server["id"]: server["name"] for server in radarr_servers}
+        
+        # Fetch Sonarr servers from Overseerr API
+        sonarr_servers = await self._fetch_overseerr_servers(overseerr_url, overseerr_api_key, "sonarr")
+        sonarr_options = {server["id"]: server["name"] for server in sonarr_servers}
+        
+        # Create schema
+        schema = {}
+        
+        # Add Radarr server selection if available
+        if radarr_options:
+            schema[vol.Optional("radarr_server_id", default=existing_data.get("radarr_server_id"))] = vol.In(radarr_options)
+        
+        # Add Sonarr server selection if available
+        if sonarr_options:
+            schema[vol.Optional("sonarr_server_id", default=existing_data.get("sonarr_server_id"))] = vol.In(sonarr_options)
+            
+        # Always add default season behavior
+        schema[vol.Required("default_season_behavior", default=existing_data.get("default_season", "All"))] = vol.In(["All", "Season 1"])
+        
+        return self.async_show_form(
+            step_id="reconfigure_overseerr_servers_and_defaults",
+            data_schema=vol.Schema(schema)
+        )
 
     async def _fetch_overseerr_users(self, url, api_key):
         """Fetch users from the Overseerr API."""

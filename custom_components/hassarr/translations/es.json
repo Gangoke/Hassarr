@@ -41,39 +41,13 @@
           "overseerr_user_id": "Usuario de Overseerr"
         }
       },
-      "overseerr_defaults": {
-        "title": "Configuración Predeterminada de Overseerr",
-        "description": "Configure los ajustes predeterminados para Overseerr",
+      "overseerr_servers_and_defaults": {
+        "title": "Configurar Servidores y Ajustes Predeterminados de Overseerr",
+        "description": "Seleccione qué servidores Radarr y Sonarr usar para solicitudes, y establezca el comportamiento predeterminado de temporadas.",
         "data": {
+          "radarr_server_id": "Servidor Radarr",
+          "sonarr_server_id": "Servidor Sonarr",
           "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Define cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
-        }
-      },
-      "overseerr_radarr_server": {
-        "title": "Servidor Radarr en Overseerr",
-        "description": "Seleccione qué servidor Radarr configurado en Overseerr usar para solicitudes de películas",
-        "data": {
-          "radarr_server_id": "Servidor Radarr"
-        }
-      },
-      "overseerr_radarr_profile": {
-        "title": "Perfil de Calidad de Radarr",
-        "description": "Seleccione qué perfil de calidad usar para solicitudes de películas",
-        "data": {
-          "radarr_profile_id": "Perfil de Calidad"
-        }
-      },
-      "overseerr_sonarr_server": {
-        "title": "Servidor Sonarr en Overseerr",
-        "description": "Seleccione qué servidor Sonarr configurado en Overseerr usar para solicitudes de series",
-        "data": {
-          "sonarr_server_id": "Servidor Sonarr"
-        }
-      },
-      "overseerr_sonarr_profile": {
-        "title": "Perfil de Calidad de Sonarr",
-        "description": "Seleccione qué perfil de calidad usar para solicitudes de series",
-        "data": {
-          "sonarr_profile_id": "Perfil de Calidad"
         }
       },
       "reconfigure": {
@@ -98,13 +72,6 @@
           "overseerr_user_id": "Usuario de Overseerr"
         }
       },
-      "reconfigure_overseerr_defaults": {
-        "title": "Configuración Predeterminada de Overseerr",
-        "description": "Configure los ajustes predeterminados para Overseerr",
-        "data": {
-          "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Define cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
-        }
-      },
       "reconfigure_radarr_sonarr": {
         "title": "Actualizar Conexión Radarr & Sonarr",
         "description": "Actualice los detalles de sus servidores Radarr y Sonarr",
@@ -123,32 +90,13 @@
           "sonarr_quality_profile_id": "Perfil de Calidad de Sonarr"
         }
       },
-      "reconfigure_overseerr_radarr_server": {
-        "title": "Actualizar Servidor Radarr en Overseerr",
-        "description": "Seleccione qué servidor Radarr configurado en Overseerr usar para solicitudes de películas",
+      "reconfigure_overseerr_servers_and_defaults": {
+        "title": "Reconfigurar Servidores y Ajustes Predeterminados de Overseerr",
+        "description": "Actualice qué servidores Radarr y Sonarr usar para solicitudes, y establezca el comportamiento predeterminado de temporadas.",
         "data": {
-          "radarr_server_id": "Servidor Radarr"
-        }
-      },
-      "reconfigure_overseerr_radarr_profile": {
-        "title": "Actualizar Perfil de Calidad de Radarr",
-        "description": "Seleccione qué perfil de calidad usar para solicitudes de películas",
-        "data": {
-          "radarr_profile_id": "Perfil de Calidad"
-        }
-      },
-      "reconfigure_overseerr_sonarr_server": {
-        "title": "Actualizar Servidor Sonarr en Overseerr",
-        "description": "Seleccione qué servidor Sonarr configurado en Overseerr usar para solicitudes de series",
-        "data": {
-          "sonarr_server_id": "Servidor Sonarr"
-        }
-      },
-      "reconfigure_overseerr_sonarr_profile": {
-        "title": "Actualizar Perfil de Calidad de Sonarr",
-        "description": "Seleccione qué perfil de calidad usar para solicitudes de series",
-        "data": {
-          "sonarr_profile_id": "Perfil de Calidad"
+          "radarr_server_id": "Servidor Radarr",
+          "sonarr_server_id": "Servidor Sonarr",
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
         }
       }
     },

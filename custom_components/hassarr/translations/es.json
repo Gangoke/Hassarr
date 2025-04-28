@@ -42,7 +42,8 @@
         }
       },
       "overseerr_defaults": {
-        "title": "Configuración de Temporadas Predeterminada de Overseerr",
+        "title": "Configuración Predeterminada de Overseerr",
+        "description": "Configure los ajustes predeterminados para Overseerr",
         "data": {
           "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Define cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
         }
@@ -70,7 +71,8 @@
         }
       },
       "reconfigure_overseerr_defaults": {
-        "title": "Configuración de Temporadas Predeterminada de Overseerr",
+        "title": "Configuración Predeterminada de Overseerr",
+        "description": "Configure los ajustes predeterminados para Overseerr",
         "data": {
           "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Define cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
         }

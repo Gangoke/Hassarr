@@ -42,7 +42,7 @@
         }
       },
       "overseerr_defaults": {
-        "title": "Overseerr Default Season Settings",
+        "title": "Overseerr Default Settings",
        "data": {
           "default_season_behavior": "Default Season Behavior - Configure how Overseerr handles requests of shows when no seasons are specified"
         }
@@ -70,7 +70,7 @@
         }
       },
       "reconfigure_overseerr_defaults": {
-        "title": "Overseerr Default Season Settings",
+        "title": "Overseerr Default Settings",
         "data": {
           "default_season_behavior": "Default Season Behavior - Configure how Overseerr handles requests of shows when no seasons are specified"
         }

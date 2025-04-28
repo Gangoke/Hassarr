@@ -9,6 +9,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
+        """Initial step for user configuration."""
         if user_input is None:
             return self.async_show_form(
                 step_id="user",
@@ -42,7 +43,6 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("integration_type", default=integration_type): vol.In(["Radarr & Sonarr", "Overseerr"]),
             })
         )
-
 
     async def async_step_reconfigure_overseerr(self, user_input=None):
         """Handle reconfiguration for Overseerr."""
@@ -100,7 +100,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # Update the existing config entry
             data = dict(self._get_reconfigure_entry().data)
-            # Map the descriptive field name back to the internal name
+            # Store with consistent internal name
             data["default_season"] = user_input["default_season_behavior"]
             self.hass.config_entries.async_update_entry(
                 self._get_reconfigure_entry(),
@@ -118,11 +118,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure_overseerr_defaults",
             data_schema=vol.Schema({
-                vol.Required(
-                    "default_season_behavior", 
-                    default=default_season,
-                    description="Default Season Behavior - Sets the default season behavior when no season(s) specified"
-                ): vol.In(["All", "Season 1"]),
+                vol.Required("default_season_behavior", default=default_season): vol.In(["All", "Season 1"]),
             })
         )
 
@@ -189,27 +185,32 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_radarr_sonarr(self, user_input=None):
-        if user_input is None:
-            return self.async_show_form(step_id="radarr_sonarr", data_schema=self._get_radarr_sonarr_schema())
-
-        # Validate user input
+        """Configure Radarr & Sonarr integration."""
         errors = {}
-        if not user_input.get("radarr_url") or not user_input.get("radarr_api_key"):
-            errors["base"] = "missing_radarr_info"
-        if not user_input.get("sonarr_url") or not user_input.get("sonarr_api_key"):
-            errors["base"] = "missing_sonarr_info"
+        
+        if user_input is not None:
+            # Validate user input
+            if not user_input.get("radarr_url") or not user_input.get("radarr_api_key"):
+                errors["base"] = "missing_radarr_info"
+            if not user_input.get("sonarr_url") or not user_input.get("sonarr_api_key"):
+                errors["base"] = "missing_sonarr_info"
 
-        if errors:
-            return self.async_show_form(step_id="radarr_sonarr", data_schema=self._get_radarr_sonarr_schema(), errors=errors)
+            if not errors:
+                # Save the connection details and proceed to quality profile selection
+                self.radarr_url = user_input["radarr_url"]
+                self.radarr_api_key = user_input["radarr_api_key"]
+                self.sonarr_url = user_input["sonarr_url"]
+                self.sonarr_api_key = user_input["sonarr_api_key"]
+                return await self.async_step_radarr_sonarr_quality_profiles()
 
-        # Save the radarr_url and radarr_api_key and proceed to quality profile selection step
-        self.radarr_url = user_input["radarr_url"]
-        self.radarr_api_key = user_input["radarr_api_key"]
-        self.sonarr_url = user_input["sonarr_url"]
-        self.sonarr_api_key = user_input["sonarr_api_key"]
-        return await self.async_step_radarr_sonarr_quality_profiles()
+        return self.async_show_form(
+            step_id="radarr_sonarr", 
+            data_schema=self._get_radarr_sonarr_schema(),
+            errors=errors
+        )
 
     async def async_step_radarr_sonarr_quality_profiles(self, user_input=None):
+        """Configure quality profiles for Radarr & Sonarr."""
         if user_input is None:
             # Fetch quality profiles from Radarr and Sonarr APIs
             radarr_profiles = await self._fetch_quality_profiles(self.radarr_url, self.radarr_api_key)
@@ -226,33 +227,39 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 })
             )
 
-        # Create the entry with the selected quality profile IDs
+        # Create the entry with all the collected data
         user_input.update({
             "radarr_url": self.radarr_url,
             "radarr_api_key": self.radarr_api_key,
             "sonarr_url": self.sonarr_url,
-            "sonarr_api_key": self.sonarr_api_key
+            "sonarr_api_key": self.sonarr_api_key,
+            "integration_type": "Radarr & Sonarr"
         })
         return self.async_create_entry(title="Hassarr", data=user_input)
 
     async def async_step_overseerr(self, user_input=None):
-        if user_input is None:
-            return self.async_show_form(step_id="overseerr", data_schema=self._get_overseerr_schema())
-
-        # Validate user input
+        """Configure Overseerr integration."""
         errors = {}
-        if not user_input.get("overseerr_url") or not user_input.get("overseerr_api_key"):
-            errors["base"] = "missing_overseerr_info"
+        
+        if user_input is not None:
+            # Validate user input
+            if not user_input.get("overseerr_url") or not user_input.get("overseerr_api_key"):
+                errors["base"] = "missing_overseerr_info"
+            
+            if not errors:
+                # Save the connection details and proceed to user selection
+                self.overseerr_url = user_input["overseerr_url"]
+                self.overseerr_api_key = user_input["overseerr_api_key"]
+                return await self.async_step_overseerr_user()
 
-        if errors:
-            return self.async_show_form(step_id="overseerr", data_schema=self._get_overseerr_schema(), errors=errors)
-
-        # Save the overseerr_url and overseerr_api_key and proceed to user selection step
-        self.overseerr_url = user_input["overseerr_url"]
-        self.overseerr_api_key = user_input["overseerr_api_key"]
-        return await self.async_step_overseerr_user()
+        return self.async_show_form(
+            step_id="overseerr", 
+            data_schema=self._get_overseerr_schema(), 
+            errors=errors
+        )
 
     async def async_step_overseerr_user(self, user_input=None):
+        """Select Overseerr user."""
         if user_input is None:
             # Fetch users from Overseerr API
             users = await self._fetch_overseerr_users(self.overseerr_url, self.overseerr_api_key)
@@ -270,15 +277,12 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_overseerr_defaults()
 
     async def async_step_overseerr_defaults(self, user_input=None):
+        """Configure default settings for Overseerr."""
         if user_input is None:
             return self.async_show_form(
                 step_id="overseerr_defaults",
                 data_schema=vol.Schema({
-                    vol.Required(
-                        "default_season_behavior", 
-                        default="All",
-                        description="Default Season Behavior - Sets the default season behavior when no season(s) specified"
-                    ): vol.In(["All", "Season 1"]),
+                    vol.Required("default_season_behavior", default="All"): vol.In(["All", "Season 1"]),
                 })
             )
 
@@ -287,7 +291,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "overseerr_url": self.overseerr_url,
             "overseerr_api_key": self.overseerr_api_key,
             "overseerr_user_id": self.overseerr_user_id,
-            "default_season": user_input["default_season_behavior"],  # Map back to internal name
+            "default_season": user_input["default_season_behavior"],
             "integration_type": "Overseerr"
         }
         return self.async_create_entry(title="Hassarr", data=data)
@@ -295,23 +299,35 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _fetch_overseerr_users(self, url, api_key):
         """Fetch users from the Overseerr API."""
         async with aiohttp.ClientSession() as session:
-            url = urljoin(url, "api/v1/user")
-            async with session.get(url, headers={"X-Api-Key": api_key}) as response:
-                response.raise_for_status()
-                data = await response.json()
-                return data["results"]
+            api_url = urljoin(url, "api/v1/user")
+            try:
+                async with session.get(api_url, headers={"X-Api-Key": api_key}) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    return data["results"]
+            except (aiohttp.ClientError, KeyError) as error:
+                self.logger.error(f"Error fetching Overseerr users: {error}")
+                return []
 
     async def _fetch_quality_profiles(self, url, api_key):
         """Fetch quality profiles from the Radarr/Sonarr API."""
         async with aiohttp.ClientSession() as session:
-            url = urljoin(url, "api/v3/qualityprofile")
-            async with session.get(url, headers={"X-Api-Key": api_key}) as response:
-                response.raise_for_status()
-                data = await response.json()
-                return data
+            api_url = urljoin(url, "api/v3/qualityprofile")
+            try:
+                async with session.get(api_url, headers={"X-Api-Key": api_key}) as response:
+                    response.raise_for_status()
+                    return await response.json()
+            except aiohttp.ClientError as error:
+                self.logger.error(f"Error fetching quality profiles: {error}")
+                return []
+
+    def _get_reconfigure_entry(self):
+        """Get the config entry being reconfigured."""
+        return self.hass.config_entries.async_get_entry(self.context["entry_id"])
 
     @staticmethod
     def _get_radarr_sonarr_schema():
+        """Get schema for Radarr & Sonarr configuration."""
         return vol.Schema({
             vol.Required("radarr_url"): str,
             vol.Required("radarr_api_key"): str,
@@ -321,6 +337,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def _get_overseerr_schema():
+        """Get schema for Overseerr configuration."""
         return vol.Schema({
             vol.Required("overseerr_url"): str,
             vol.Required("overseerr_api_key"): str

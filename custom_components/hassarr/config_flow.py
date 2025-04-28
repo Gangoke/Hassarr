@@ -610,6 +610,10 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     response.raise_for_status()
                     data = await response.json()
                     _LOGGER.debug(f"Received {server_type} server data: {data}")
+                    # The API returns a direct array of servers, not an object with a servers property
+                    if isinstance(data, list):
+                        return data
+                    # Fallback to previous behavior just in case
                     return data.get("servers", [])
             except aiohttp.ClientError as error:
                 _LOGGER.error(f"Error fetching Overseerr {server_type} servers: {error}")

@@ -1,10 +1,14 @@
 import logging
 import requests
+import time
+from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlparse, urlunparse
 from .const import DOMAIN
 from homeassistant.core import HomeAssistant, ServiceCall
 
 _LOGGER = logging.getLogger(__name__)
+
+_RECENT_REQUESTS = {}
 
 def fetch_data(url: str, headers: dict) -> dict | None:
     """Fetch data from the given URL with headers.
@@ -113,15 +117,36 @@ def handle_add_media(hass: HomeAssistant, call: ServiceCall, media_type: str, se
         _LOGGER.info(f"No results found for {media_type} '{title}'")
 
 def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_type: str) -> None:
-    """Handle the service action to add a media (movie or TV show) using Overseerr.
-
-    Args:
-        hass (HomeAssistant): The Home Assistant instance.
-        call (ServiceCall): The service call object.
-        media_type (str): The type of media to add (e.g., "movie" or "tv").
-    """
+    """Handle the service action to add a media (movie or TV show) using Overseerr."""
     _LOGGER.info(f"Received call data: {call.data}")
     title = call.data.get("title")
+    
+    if not title:
+        _LOGGER.error("Title is missing in the service call data")
+        return
+        
+    # Check for duplicate requests within 10 seconds
+    request_key = f"{title}:{media_type}"
+    current_time = datetime.now()
+    
+    if request_key in _RECENT_REQUESTS:
+        last_request_time = _RECENT_REQUESTS[request_key]
+        time_diff = (current_time - last_request_time).total_seconds()
+        
+        if time_diff < 10:  # Within 10 seconds
+            _LOGGER.warning(f"Duplicate request for '{title}' detected within {time_diff:.2f} seconds. Ignoring.")
+            return
+    
+    # Update the request tracker
+    _RECENT_REQUESTS[request_key] = current_time
+    
+    # Clean up old entries (older than 2 minutes)
+    cleanup_time = current_time - timedelta(minutes=2)
+    for key in list(_RECENT_REQUESTS.keys()):
+        if _RECENT_REQUESTS[key] < cleanup_time:
+            del _RECENT_REQUESTS[key]
+    
+    _LOGGER.info(f"Processing request for title: {title}")
     
     # Access stored configuration data
     config_data = hass.data[DOMAIN]
@@ -135,15 +160,7 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
     
     seasons = call.data.get("seasons", default_seasons)
 
-    if not title:
-        _LOGGER.error("Title is missing in the service call data")
-        return
-
-    _LOGGER.info(f"Title received: {title}")
-    
     # Access stored configuration data
-    config_data = hass.data[DOMAIN]
-
     url = config_data.get("overseerr_url")
     api_key = config_data.get("overseerr_api_key")
 

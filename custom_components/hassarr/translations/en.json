@@ -42,10 +42,9 @@
         }
       },
       "overseerr_defaults": {
-        "title": "Overseerr Default Settings",
-        "description": "Configure default behavior for Overseerr requests",
-        "data": {
-          "default_season_behavior": "Default Season Behavior"
+        "title": "Overseerr Default Season Settings",
+       "data": {
+          "default_season_behavior": "Default Season Behavior - Configure how Overseerr handles requests of shows when no seasons are specified"
         }
       },
       "reconfigure": {
@@ -71,10 +70,9 @@
         }
       },
       "reconfigure_overseerr_defaults": {
-        "title": "Update Overseerr Defaults",
-        "description": "Configure default behavior for Overseerr requests",
+        "title": "Overseerr Default Season Settings",
         "data": {
-          "default_season_behavior": "Default Season Behavior - Sets the default season selection when no seasons are specified"
+          "default_season_behavior": "Default Season Behavior - Configure how Overseerr handles requests of shows when no seasons are specified"
         }
       },
       "reconfigure_radarr_sonarr": {

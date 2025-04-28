@@ -401,7 +401,10 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             if not errors:
                 # Save the connection details and proceed to user selection
-                self.overseerr_url = user_input["overseerr_url"]
+                if not user_input["overseerr_url"].startswith(("http://", "https://")):
+                    self.overseerr_url = f"http://{user_input['overseerr_url']}"
+                else:
+                    self.overseerr_url = user_input["overseerr_url"]
                 self.overseerr_api_key = user_input["overseerr_api_key"]
                 return await self.async_step_overseerr_user()
 
@@ -602,12 +605,17 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         async with aiohttp.ClientSession() as session:
             api_url = urljoin(url, f"api/v1/settings/{server_type}")
             try:
+                _LOGGER.debug(f"Fetching {server_type} servers from Overseerr: {api_url}")
                 async with session.get(api_url, headers={"X-Api-Key": api_key}) as response:
                     response.raise_for_status()
                     data = await response.json()
+                    _LOGGER.debug(f"Received {server_type} server data: {data}")
                     return data.get("servers", [])
-            except (aiohttp.ClientError, KeyError) as error:
+            except aiohttp.ClientError as error:
                 _LOGGER.error(f"Error fetching Overseerr {server_type} servers: {error}")
+                return []
+            except Exception as error:
+                _LOGGER.error(f"Unexpected error fetching {server_type} servers: {error}")
                 return []
 
     async def _fetch_overseerr_profiles(self, url, api_key, server_type, server_id):

@@ -176,21 +176,36 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
 
     if search_results and search_results.get("results"):
         media_data = search_results["results"][0]
-        _LOGGER.error(f"Media data: {media_data}")
+        _LOGGER.info(f"Media data: {media_data}")
 
         # Prepare payload
         payload = {
             "mediaType": media_type,
             "mediaId": media_data["id"],
             "is4k": False,
-            "serverId": 0,
-            "profileId": 0,
-            "rootFolder": "",
-            "languageProfileId": 0,
             "userId": config_data.get("overseerr_user_id"),
             "seasons": seasons if media_type == "tv" else []
         }
-        if media_type == "tv":
+        
+        # Add server and profile information based on media type
+        if media_type == "movie":
+            # Add Radarr server and profile if configured
+            if config_data.get("radarr_server_id"):
+                payload["serverId"] = config_data.get("radarr_server_id")
+                
+                # Add profile if available
+                if config_data.get("radarr_profile_id"):
+                    payload["profileId"] = config_data.get("radarr_profile_id")
+        elif media_type == "tv":
+            # Add Sonarr server and profile if configured
+            if config_data.get("sonarr_server_id"):
+                payload["serverId"] = config_data.get("sonarr_server_id")
+                
+                # Add profile if available
+                if config_data.get("sonarr_profile_id"):
+                    payload["profileId"] = config_data.get("sonarr_profile_id")
+                    
+            # Add tvdbId if available
             tvdb_id = media_data.get("tvdbId")
             if tvdb_id is not None:
                 payload["tvdbId"] = tvdb_id

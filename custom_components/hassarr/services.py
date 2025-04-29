@@ -42,6 +42,10 @@ def get_root_folder_path(url: str, headers: dict) -> str | None:
         return data[0].get("path")
     return None
 
+#####
+# Radarr/Sonarr integration (non-Overseerr)
+#####
+
 def handle_add_media(hass: HomeAssistant, call: ServiceCall, media_type: str, service_name: str) -> None:
     """Handle the service action to add a media (movie or TV show).
 
@@ -115,6 +119,10 @@ def handle_add_media(hass: HomeAssistant, call: ServiceCall, media_type: str, se
             _LOGGER.error(f"Failed to add {media_type} '{title}' to {service_name.capitalize()}: {add_response.text}")
     else:
         _LOGGER.info(f"No results found for {media_type} '{title}'")
+
+#####
+# OVERSEERR Integration
+#####
 
 def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_type: str) -> None:
     """Handle the service action to add a media (movie or TV show) using Overseerr."""

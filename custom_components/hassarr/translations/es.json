@@ -23,7 +23,8 @@
         "description": "Seleccione sus perfiles de calidad preferidos para películas y series de TV",
         "data": {
           "radarr_quality_profile_id": "Perfil de Calidad de Radarr",
-          "sonarr_quality_profile_id": "Perfil de Calidad de Sonarr"
+          "sonarr_quality_profile_id": "Perfil de Calidad de Sonarr",
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
         }
       },
       "overseerr": {
@@ -47,7 +48,7 @@
         "data": {
           "radarr_server_id": "Servidor Radarr",
           "sonarr_server_id": "Servidor Sonarr",
-          "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Define cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
         }
       },
       "reconfigure": {
@@ -87,7 +88,8 @@
         "description": "Seleccione sus perfiles de calidad preferidos para películas y series de TV",
         "data": {
           "radarr_quality_profile_id": "Perfil de Calidad de Radarr",
-          "sonarr_quality_profile_id": "Perfil de Calidad de Sonarr"
+          "sonarr_quality_profile_id": "Perfil de Calidad de Sonarr",
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
         }
       },
       "reconfigure_overseerr_servers_and_defaults": {
@@ -96,6 +98,13 @@
         "data": {
           "radarr_server_id": "Servidor Radarr",
           "sonarr_server_id": "Servidor Sonarr",
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
+        }
+      },
+      "reconfigure_overseerr_defaults": {
+        "title": "Actualizar Ajustes Predeterminados de Overseerr",
+        "description": "Actualice los ajustes predeterminados para solicitudes de Overseerr",
+        "data": {
           "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
         }
       }
@@ -115,6 +124,20 @@
       "init": {
         "title": "Configurar Opciones de Hassarr",
         "description": "Actualizar configuración para su sistema de solicitud de medios"
+      }
+    }
+  },
+  "selector": {
+    "default_season_behavior": {
+      "options": {
+        "All": "Todas las Temporadas (excepto especiales)",
+        "Season 1": "Solo Temporada 1"
+      }
+    },
+    "integration_type": {
+      "options": {
+        "Radarr & Sonarr": "Radarr y Sonarr Directo",
+        "Overseerr": "Overseerr"
       }
     }
   }

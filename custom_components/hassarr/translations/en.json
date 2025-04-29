@@ -23,7 +23,8 @@
         "description": "Select your preferred quality profiles for movie and TV show requests",
         "data": {
           "radarr_quality_profile_id": "Radarr Quality Profile",
-          "sonarr_quality_profile_id": "Sonarr Quality Profile"
+          "sonarr_quality_profile_id": "Sonarr Quality Profile",
+          "default_season_behavior": "Default Season Behavior"
         }
       },
       "overseerr": {
@@ -47,7 +48,7 @@
         "data": {
           "radarr_server_id": "Radarr Server",
           "sonarr_server_id": "Sonarr Server",
-          "default_season_behavior": "Default Season Behavior - Configure how Overseerr handles requests of shows when no seasons are specified"
+          "default_season_behavior": "Default Season Behavior"
         }
       },
       "reconfigure": {
@@ -87,7 +88,8 @@
         "description": "Select your preferred quality profiles for movie and TV show requests",
         "data": {
           "radarr_quality_profile_id": "Radarr Quality Profile",
-          "sonarr_quality_profile_id": "Sonarr Quality Profile"
+          "sonarr_quality_profile_id": "Sonarr Quality Profile",
+          "default_season_behavior": "Default Season Behavior"
         }
       },
       "reconfigure_overseerr_servers_and_defaults": {
@@ -96,6 +98,13 @@
         "data": {
           "radarr_server_id": "Radarr Server",
           "sonarr_server_id": "Sonarr Server",
+          "default_season_behavior": "Default Season Behavior"
+        }
+      },
+      "reconfigure_overseerr_defaults": {
+        "title": "Update Overseerr Default Settings",
+        "description": "Update the default settings for Overseerr requests",
+        "data": {
           "default_season_behavior": "Default Season Behavior"
         }
       }
@@ -115,6 +124,20 @@
       "init": {
         "title": "Configure Hassarr Options",
         "description": "Update configuration for your media request system"
+      }
+    }
+  },
+  "selector": {
+    "default_season_behavior": {
+      "options": {
+        "All": "All Seasons (except specials)",
+        "Season 1": "Season 1 Only"
+      }
+    },
+    "integration_type": {
+      "options": {
+        "Radarr & Sonarr": "Direct Radarr & Sonarr",
+        "Overseerr": "Overseerr"
       }
     }
   }

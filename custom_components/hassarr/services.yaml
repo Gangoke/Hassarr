@@ -11,6 +11,9 @@ add_sonarr_tv_show:
     title:
       description: "Title of the TV show"
       example: "Breaking Bad"
+    seasons:
+      description: "Which seasons to monitor (e.g., 'all', 'Season 1', '1, 2, 3')"
+      example: "seasons 1, 2, and 3"
 
 add_overseerr_movie:
   description: "Add a movie to Overseerr"
@@ -25,3 +28,6 @@ add_overseerr_tv_show:
     title:
       description: "Title of the TV show"
       example: "Breaking Bad"
+    seasons:
+      description: "Which seasons to request (e.g., 'all', 'Season 1', '1, 2, 3')"
+      example: "seasons 1, 2, and 3"

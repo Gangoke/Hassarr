@@ -1,10 +1,15 @@
 import logging
 import requests
 import time
+import re
 from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlparse, urlunparse
 from .const import DOMAIN
 from homeassistant.core import HomeAssistant, ServiceCall
+
+####
+# Common
+####
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +46,34 @@ def get_root_folder_path(url: str, headers: dict) -> str | None:
     if data:
         return data[0].get("path")
     return None
+
+# Add this helper function to parse season input
+def parse_seasons_input(seasons_input):
+    """Parse seasons input into a list of integers or 'all'.
+    
+    Args:
+        seasons_input: The input to parse
+        
+    Returns:
+        "all" or a list of integers representing season numbers
+    """
+    # If already a list of integers, return as is
+    if isinstance(seasons_input, list) and all(isinstance(item, int) for item in seasons_input):
+        return seasons_input
+        
+    # If it's the string "all" (case insensitive)
+    if isinstance(seasons_input, str) and seasons_input.lower() == "all":
+        return "all"
+        
+    # If it's a string, try to extract numbers
+    if isinstance(seasons_input, str):
+        # Extract all numbers from the string
+        numbers = re.findall(r'\d+', seasons_input)
+        if numbers:
+            return [int(num) for num in numbers]
+    
+    # Default fallback
+    return "all"
 
 #####
 # Radarr/Sonarr integration (non-Overseerr)
@@ -103,10 +136,56 @@ def handle_add_media(hass: HomeAssistant, call: ServiceCall, media_type: str, se
             },
             'qualityProfileId': quality_profile_id,
         }
+        
         if media_type == 'movie':
             payload['tmdbId'] = media_data['tmdbId']
-        else:
+        else:  # series/TV show
             payload['tvdbId'] = media_data['tvdbId']
+            
+            # Set monitored flag for the series itself
+            payload['monitored'] = True
+            
+            # Handle seasons for TV shows if we have season information
+            if media_type == 'series' and 'seasons' in media_data:
+                # Get the default season preference
+                default_season = config_data.get("default_season", "All")
+                
+                # Process any seasons input from the service call
+                raw_seasons_input = call.data.get("seasons", default_season)
+                parsed_seasons = parse_seasons_input(raw_seasons_input)
+                
+                _LOGGER.info(f"Parsed seasons input: {parsed_seasons}")
+                
+                # Create seasons array for payload
+                seasons_array = []
+                
+                # For Sonarr, we need to explicitly list all seasons with their monitoring status
+                for season in media_data.get('seasons', []):
+                    season_number = season.get('seasonNumber')
+                    
+                    # Determine if this season should be monitored
+                    is_monitored = False
+                    
+                    if parsed_seasons == "all":
+                        # When "all" is specified, include all seasons EXCEPT season 0 (specials)
+                        is_monitored = season_number != 0
+                    elif default_season == "Season 1" and parsed_seasons == default_season:
+                        # Only monitor season 1
+                        is_monitored = season_number == 1
+                    elif isinstance(parsed_seasons, list):
+                        # Monitor only the specified seasons
+                        is_monitored = season_number in parsed_seasons
+                    
+                    # Add this season to the array
+                    seasons_array.append({
+                        'seasonNumber': season_number,
+                        'monitored': is_monitored
+                    })
+                
+                # Add seasons array to payload
+                payload['seasons'] = seasons_array
+                
+                _LOGGER.info(f"Adding TV show with seasons configuration: {seasons_array}")
 
         # Add media
         add_url = urljoin(url, f"api/v3/{media_type}")
@@ -165,8 +244,22 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
         default_seasons = [1]
     else:  # "All"
         default_seasons = "all"
-    
-    seasons = call.data.get("seasons", default_seasons)
+
+    # Get and parse the seasons input
+    raw_seasons_input = call.data.get("seasons", default_seasons)
+    parsed_seasons = parse_seasons_input(raw_seasons_input)
+    _LOGGER.info(f"Parsed seasons input for Overseerr: {parsed_seasons}")
+
+    # Format seasons for Overseerr payload
+    if parsed_seasons == "all":
+        # For "all", Overseerr expects the string "all"
+        seasons_to_use = "all"
+    elif isinstance(parsed_seasons, list):
+        # For specific seasons, use the list of integers
+        seasons_to_use = parsed_seasons
+    else:
+        # Fallback
+        seasons_to_use = "all"
 
     # Access stored configuration data
     url = config_data.get("overseerr_url")
@@ -209,7 +302,7 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
             "mediaId": media_data["id"],
             "is4k": False,
             "userId": config_data.get("overseerr_user_id"),
-            "seasons": seasons if media_type == "tv" else []
+            "seasons": seasons_to_use if media_type == "tv" else []
         }
         
         # Add server and profile information based on media type

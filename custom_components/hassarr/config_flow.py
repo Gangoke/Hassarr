@@ -3,6 +3,7 @@ from urllib.parse import urljoin
 import voluptuous as vol
 from homeassistant import config_entries
 import aiohttp
+from homeassistant.helpers import selector
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,7 +18,12 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="user",
                 data_schema=vol.Schema({
-                    vol.Required("integration_type"): vol.In(["Radarr & Sonarr", "Overseerr"])
+                    vol.Required("integration_type"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=["Radarr & Sonarr", "Overseerr"],
+                            translation_key="integration_type"
+                        )
+                    )
                 })
             )
 
@@ -43,7 +49,12 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema({
-                vol.Required("integration_type", default=integration_type): vol.In(["Radarr & Sonarr", "Overseerr"]),
+                vol.Required("integration_type", default=integration_type): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["Radarr & Sonarr", "Overseerr"],
+                        translation_key="integration_type"
+                    )
+                )
             })
         )
 
@@ -91,6 +102,12 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=vol.Schema({
                     vol.Required("radarr_quality_profile_id"): vol.In(radarr_options),
                     vol.Required("sonarr_quality_profile_id"): vol.In(sonarr_options),
+                    vol.Required("default_season_behavior", default="All"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=["All", "Season 1"],
+                            translation_key="default_season_behavior"
+                        )
+                    )
                 })
             )
 
@@ -100,7 +117,9 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "radarr_api_key": self.radarr_api_key,
             "sonarr_url": self.sonarr_url,
             "sonarr_api_key": self.sonarr_api_key,
-            "integration_type": "Radarr & Sonarr"
+            "integration_type": "Radarr & Sonarr",
+            # Use a consistent key name between integration types
+            "default_season": user_input["default_season_behavior"] 
         })
         return self.async_create_entry(title="Hassarr", data=user_input)
         
@@ -135,13 +154,18 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Update the existing config entry
             data = dict(self._get_reconfigure_entry().data)
             data.update(user_input)
+            
+            # Make sure we use the consistent key name
+            if "default_season_behavior" in user_input:
+                data["default_season"] = user_input["default_season_behavior"]
+                
             self.hass.config_entries.async_update_entry(
                 self._get_reconfigure_entry(),
                 data=data
             )
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
-                data_updates=user_input,
+                data_updates=data,
             )
 
         # Get existing data to pre-fill the form
@@ -150,6 +174,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         radarr_api_key = existing_data.get("radarr_api_key")
         sonarr_url = existing_data.get("sonarr_url")
         sonarr_api_key = existing_data.get("sonarr_api_key")
+        default_season = existing_data.get("default_season", "All")
 
         # Fetch quality profiles from Radarr and Sonarr APIs
         radarr_profiles = await self._fetch_quality_profiles(radarr_url, radarr_api_key)
@@ -163,6 +188,12 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("radarr_quality_profile_id"): vol.In(radarr_options),
                 vol.Required("sonarr_quality_profile_id"): vol.In(sonarr_options),
+                vol.Required("default_season_behavior", default=default_season): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["All", "Season 1"],
+                        translation_key="default_season_behavior"
+                    )
+                )
             })
         )
 
@@ -262,8 +293,13 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if sonarr_options:
                 schema[vol.Optional("sonarr_server_id")] = vol.In(sonarr_options)
                 
-            # Always add default season behavior
-            schema[vol.Required("default_season_behavior", default="All")] = vol.In(["All", "Season 1"])
+            # Always add default season behavior with selector for translation
+            schema[vol.Required("default_season_behavior", default="All")] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["All", "Season 1"],
+                    translation_key="default_season_behavior"
+                )
+            )
             
             return self.async_show_form(
                 step_id="overseerr_servers_and_defaults",
@@ -359,196 +395,6 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             })
         )
 
-    async def async_step_reconfigure_overseerr_radarr_server(self, user_input=None):
-        """Handle reconfiguration for Overseerr Radarr server selection."""
-        if user_input is not None:
-            # Update the existing config entry
-            data = dict(self._get_reconfigure_entry().data)
-            data.update(user_input)
-            self.hass.config_entries.async_update_entry(
-                self._get_reconfigure_entry(),
-                data=data
-            )
-            # Skip to profile selection if server was selected, otherwise go to Sonarr server
-            if "radarr_server_id" in user_input and user_input["radarr_server_id"]:
-                return await self.async_step_reconfigure_overseerr_radarr_profile()
-            else:
-                return await self.async_step_reconfigure_overseerr_sonarr_server()
-
-        # Get existing data
-        existing_data = self._get_reconfigure_entry().data
-        overseerr_url = existing_data.get("overseerr_url")
-        overseerr_api_key = existing_data.get("overseerr_api_key")
-
-        # Fetch Radarr servers from Overseerr API
-        radarr_servers = await self._fetch_overseerr_servers(overseerr_url, overseerr_api_key, "radarr")
-        server_options = {server["id"]: server["name"] for server in radarr_servers}
-
-        # Handle no servers available
-        if not server_options:
-            return await self.async_step_reconfigure_overseerr_sonarr_server()
-            
-        return self.async_show_form(
-            step_id="reconfigure_overseerr_radarr_server",
-            data_schema=vol.Schema({
-                vol.Required("radarr_server_id", default=existing_data.get("radarr_server_id")): vol.In(server_options),
-            })
-        )
-
-    async def async_step_reconfigure_overseerr_radarr_profile(self, user_input=None):
-        """Handle reconfiguration for Overseerr Radarr profile selection."""
-        if user_input is not None:
-            # Update the existing config entry
-            data = dict(self._get_reconfigure_entry().data)
-            data.update(user_input)
-            self.hass.config_entries.async_update_entry(
-                self._get_reconfigure_entry(),
-                data=data
-            )
-            return await self.async_step_reconfigure_overseerr_sonarr_server()
-
-        # Get existing data
-        existing_data = self._get_reconfigure_entry().data
-        overseerr_url = existing_data.get("overseerr_url")
-        overseerr_api_key = existing_data.get("overseerr_api_key")
-        radarr_server_id = existing_data.get("radarr_server_id")
-
-        # Skip if no Radarr server is configured
-        if not radarr_server_id:
-            return await self.async_step_reconfigure_overseerr_sonarr_server()
-
-        # Fetch profiles for the selected server
-        profiles = await self._fetch_overseerr_profiles(
-            overseerr_url, 
-            overseerr_api_key,
-            "radarr",
-            radarr_server_id
-        )
-        
-        profile_options = {profile["id"]: profile["name"] for profile in profiles}
-        
-        return self.async_show_form(
-            step_id="reconfigure_overseerr_radarr_profile",
-            data_schema=vol.Schema({
-                vol.Required("radarr_profile_id", default=existing_data.get("radarr_profile_id")): vol.In(profile_options),
-            })
-        )
-
-    async def async_step_reconfigure_overseerr_sonarr_server(self, user_input=None):
-        """Handle reconfiguration for Overseerr Sonarr server selection."""
-        if user_input is not None:
-            # Update the existing config entry
-            data = dict(self._get_reconfigure_entry().data)
-            data.update(user_input)
-            
-            # If a server was selected, get its active profile ID
-            if "sonarr_server_id" in user_input and user_input["sonarr_server_id"]:
-                # Fetch the server data to get the activeProfileId
-                sonarr_servers = await self._fetch_overseerr_servers(
-                    existing_data.get("overseerr_url"), 
-                    existing_data.get("overseerr_api_key"), 
-                    "sonarr"
-                )
-                
-                for server in sonarr_servers:
-                    if server["id"] == user_input["sonarr_server_id"]:
-                        data["sonarr_profile_id"] = server.get("activeProfileId")
-                        break
-            
-            self.hass.config_entries.async_update_entry(
-                self._get_reconfigure_entry(),
-                data=data
-            )
-            
-            # Skip directly to defaults
-            return await self.async_step_reconfigure_overseerr_defaults()
-
-        # Get existing data
-        existing_data = self._get_reconfigure_entry().data
-        overseerr_url = existing_data.get("overseerr_url")
-        overseerr_api_key = existing_data.get("overseerr_api_key")
-
-        # Fetch Sonarr servers from Overseerr API
-        sonarr_servers = await self._fetch_overseerr_servers(overseerr_url, overseerr_api_key, "sonarr")
-        server_options = {server["id"]: server["name"] for server in sonarr_servers}
-
-        # Handle no servers available
-        if not server_options:
-            return await self.async_step_reconfigure_overseerr_defaults()
-            
-        return self.async_show_form(
-            step_id="reconfigure_overseerr_sonarr_server",
-            data_schema=vol.Schema({
-                vol.Required("sonarr_server_id", default=existing_data.get("sonarr_server_id")): vol.In(server_options),
-            })
-        )
-
-    async def async_step_reconfigure_overseerr_sonarr_profile(self, user_input=None):
-        """Handle reconfiguration for Overseerr Sonarr profile selection."""
-        if user_input is not None:
-            # Update the existing config entry
-            data = dict(self._get_reconfigure_entry().data)
-            data.update(user_input)
-            self.hass.config_entries.async_update_entry(
-                self._get_reconfigure_entry(),
-                data=data
-            )
-            return await self.async_step_reconfigure_overseerr_defaults()
-
-        # Get existing data
-        existing_data = self._get_reconfigure_entry().data
-        overseerr_url = existing_data.get("overseerr_url")
-        overseerr_api_key = existing_data.get("overseerr_api_key")
-        sonarr_server_id = existing_data.get("sonarr_server_id")
-
-        # Skip if no Sonarr server is configured
-        if not sonarr_server_id:
-            return await self.async_step_reconfigure_overseerr_defaults()
-
-        # Fetch profiles for the selected server
-        profiles = await self._fetch_overseerr_profiles(
-            overseerr_url, 
-            overseerr_api_key,
-            "sonarr",
-            sonarr_server_id
-        )
-        
-        profile_options = {profile["id"]: profile["name"] for profile in profiles}
-        
-        return self.async_show_form(
-            step_id="reconfigure_overseerr_sonarr_profile",
-            data_schema=vol.Schema({
-                vol.Required("sonarr_profile_id", default=existing_data.get("sonarr_profile_id")): vol.In(profile_options),
-            })
-        )
-
-    async def async_step_reconfigure_overseerr_defaults(self, user_input=None):
-        """Handle reconfiguration for Overseerr default settings."""
-        if user_input is not None:
-            # Update the existing config entry
-            data = dict(self._get_reconfigure_entry().data)
-            # Store with consistent internal name
-            data["default_season"] = user_input["default_season_behavior"]
-            self.hass.config_entries.async_update_entry(
-                self._get_reconfigure_entry(),
-                data=data
-            )
-            return self.async_update_reload_and_abort(
-                self._get_reconfigure_entry(),
-                data_updates={"default_season": user_input["default_season_behavior"]},
-            )
-
-        # Get existing data to pre-fill the form
-        existing_data = self._get_reconfigure_entry().data
-        default_season = existing_data.get("default_season", "All")
-
-        return self.async_show_form(
-            step_id="reconfigure_overseerr_defaults",
-            data_schema=vol.Schema({
-                vol.Required("default_season_behavior", default=default_season): vol.In(["All", "Season 1"]),
-            })
-        )
-
     async def async_step_reconfigure_overseerr_servers_and_defaults(self, user_input=None):
         """Handle reconfiguration for servers and defaults in one step."""
         if user_input is not None:
@@ -599,7 +445,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._get_reconfigure_entry(),
                 data=data
             )
-            
+                        
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
                 data_updates=data,
@@ -630,7 +476,12 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema[vol.Optional("sonarr_server_id", default=existing_data.get("sonarr_server_id"))] = vol.In(sonarr_options)
             
         # Always add default season behavior
-        schema[vol.Required("default_season_behavior", default=existing_data.get("default_season", "All"))] = vol.In(["All", "Season 1"])
+        schema[vol.Required("default_season_behavior", default=existing_data.get("default_season", "All"))] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=["All", "Season 1"],
+                translation_key="default_season_behavior"
+            )
+        )
         
         return self.async_show_form(
             step_id="reconfigure_overseerr_servers_and_defaults",

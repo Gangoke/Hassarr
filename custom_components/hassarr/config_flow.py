@@ -272,14 +272,20 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             radarr_servers = await self._fetch_overseerr_servers(
                 self.overseerr_url, self.overseerr_api_key, "radarr"
             )
-            radarr_options = {server["id"]: server["name"] for server in radarr_servers}
+            radarr_options = [{
+                "value": str(server["id"]),
+                "label": server["name"]
+            } for server in radarr_servers]
             self.radarr_servers = {server["id"]: server for server in radarr_servers}
             
             # Fetch Sonarr servers from Overseerr API
             sonarr_servers = await self._fetch_overseerr_servers(
                 self.overseerr_url, self.overseerr_api_key, "sonarr"
             )
-            sonarr_options = {server["id"]: server["name"] for server in sonarr_servers}
+            sonarr_options = [{
+                "value": str(server["id"]),
+                "label": server["name"]
+            } for server in sonarr_servers]
             self.sonarr_servers = {server["id"]: server for server in sonarr_servers}
             
             # Create schema
@@ -287,11 +293,21 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             # Add Radarr server selection if available
             if radarr_options:
-                schema[vol.Optional("radarr_server_id")] = vol.In(radarr_options)
+                schema[vol.Optional("radarr_server_id")] = selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=radarr_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN
+                    )
+                )
             
             # Add Sonarr server selection if available
             if sonarr_options:
-                schema[vol.Optional("sonarr_server_id")] = vol.In(sonarr_options)
+                schema[vol.Optional("sonarr_server_id")] = selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=sonarr_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN
+                    )
+                )
                 
             # Always add default season behavior with selector for translation
             schema[vol.Required("default_season_behavior", default="All")] = selector.SelectSelector(
@@ -403,16 +419,16 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             # Update with the new selections
             if "radarr_server_id" in user_input:
-                data["radarr_server_id"] = user_input["radarr_server_id"]
+                data["radarr_server_id"] = int(user_input["radarr_server_id"]) if user_input["radarr_server_id"] else None
                 # Get the active profile ID for the selected Radarr server
-                if user_input["radarr_server_id"]:
+                if data["radarr_server_id"]:
                     radarr_servers = await self._fetch_overseerr_servers(
                         data.get("overseerr_url"), 
                         data.get("overseerr_api_key"), 
                         "radarr"
                     )
                     for server in radarr_servers:
-                        if server["id"] == user_input["radarr_server_id"]:
+                        if server["id"] == data["radarr_server_id"]:
                             data["radarr_profile_id"] = server.get("activeProfileId")
                             break
                 else:
@@ -421,16 +437,16 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         del data["radarr_profile_id"]
                         
             if "sonarr_server_id" in user_input:
-                data["sonarr_server_id"] = user_input["sonarr_server_id"]
+                data["sonarr_server_id"] = int(user_input["sonarr_server_id"]) if user_input["sonarr_server_id"] else None
                 # Get the active profile ID for the selected Sonarr server
-                if user_input["sonarr_server_id"]:
+                if data["sonarr_server_id"]:
                     sonarr_servers = await self._fetch_overseerr_servers(
                         data.get("overseerr_url"), 
                         data.get("overseerr_api_key"), 
                         "sonarr"
                     )
                     for server in sonarr_servers:
-                        if server["id"] == user_input["sonarr_server_id"]:
+                        if server["id"] == data["sonarr_server_id"]:
                             data["sonarr_profile_id"] = server.get("activeProfileId")
                             break
                 else:
@@ -455,25 +471,43 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         existing_data = self._get_reconfigure_entry().data
         overseerr_url = existing_data.get("overseerr_url")
         overseerr_api_key = existing_data.get("overseerr_api_key")
+        current_radarr_server_id = str(existing_data.get("radarr_server_id", ""))
+        current_sonarr_server_id = str(existing_data.get("sonarr_server_id", ""))
 
         # Fetch Radarr servers from Overseerr API
         radarr_servers = await self._fetch_overseerr_servers(overseerr_url, overseerr_api_key, "radarr")
-        radarr_options = {server["id"]: server["name"] for server in radarr_servers}
+        radarr_options = [{
+            "value": str(server["id"]),
+            "label": server["name"]
+        } for server in radarr_servers]
         
         # Fetch Sonarr servers from Overseerr API
         sonarr_servers = await self._fetch_overseerr_servers(overseerr_url, overseerr_api_key, "sonarr")
-        sonarr_options = {server["id"]: server["name"] for server in sonarr_servers}
+        sonarr_options = [{
+            "value": str(server["id"]),
+            "label": server["name"] 
+        } for server in sonarr_servers]
         
         # Create schema
         schema = {}
         
         # Add Radarr server selection if available
         if radarr_options:
-            schema[vol.Optional("radarr_server_id", default=existing_data.get("radarr_server_id"))] = vol.In(radarr_options)
+            schema[vol.Optional("radarr_server_id", default=current_radarr_server_id)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=radarr_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            )
         
         # Add Sonarr server selection if available
         if sonarr_options:
-            schema[vol.Optional("sonarr_server_id", default=existing_data.get("sonarr_server_id"))] = vol.In(sonarr_options)
+            schema[vol.Optional("sonarr_server_id", default=current_sonarr_server_id)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=sonarr_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            )
             
         # Always add default season behavior
         schema[vol.Required("default_season_behavior", default=existing_data.get("default_season", "All"))] = selector.SelectSelector(

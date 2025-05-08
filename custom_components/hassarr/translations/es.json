@@ -9,7 +9,7 @@
         }
       },
       "radarr_sonarr": {
-        "title": "Conexión Radarr & Sonarr",
+        "title": "Conexión Radarr y Sonarr",
         "description": "Ingrese los detalles de conexión de sus servidores Radarr y Sonarr",
         "data": {
           "radarr_url": "URL de Radarr",
@@ -24,7 +24,7 @@
         "data": {
           "radarr_quality_profile_id": "Perfil de Calidad de Radarr",
           "sonarr_quality_profile_id": "Perfil de Calidad de Sonarr",
-          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Configure cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
         }
       },
       "overseerr": {
@@ -48,7 +48,7 @@
         "data": {
           "radarr_server_id": "Servidor Radarr",
           "sonarr_server_id": "Servidor Sonarr",
-          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Configure cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
         }
       },
       "reconfigure": {
@@ -74,7 +74,7 @@
         }
       },
       "reconfigure_radarr_sonarr": {
-        "title": "Actualizar Conexión Radarr & Sonarr",
+        "title": "Actualizar Conexión Radarr y Sonarr",
         "description": "Actualice los detalles de sus servidores Radarr y Sonarr",
         "data": {
           "radarr_url": "URL de Radarr",
@@ -89,7 +89,7 @@
         "data": {
           "radarr_quality_profile_id": "Perfil de Calidad de Radarr",
           "sonarr_quality_profile_id": "Perfil de Calidad de Sonarr",
-          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Configure cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
         }
       },
       "reconfigure_overseerr_servers_and_defaults": {
@@ -98,14 +98,14 @@
         "data": {
           "radarr_server_id": "Servidor Radarr",
           "sonarr_server_id": "Servidor Sonarr",
-          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Configure cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
         }
       },
       "reconfigure_overseerr_defaults": {
         "title": "Actualizar Ajustes Predeterminados de Overseerr",
         "description": "Actualice los ajustes predeterminados para solicitudes de Overseerr",
         "data": {
-          "default_season_behavior": "Comportamiento Predeterminado de Temporadas"
+          "default_season_behavior": "Comportamiento Predeterminado de Temporadas - Configure cómo Overseerr maneja las solicitudes de series cuando no se especifican temporadas"
         }
       }
     },
@@ -130,7 +130,7 @@
   "selector": {
     "default_season_behavior": {
       "options": {
-        "All": "Todas las Temporadas (excepto especiales)",
+        "All": "Todas las Temporadas",
         "Season 1": "Solo Temporada 1"
       }
     },

@@ -252,9 +252,9 @@ def handle_add_media(hass: HomeAssistant, call: ServiceCall, media_type: str, se
         add_response = requests.post(add_url, json=payload, headers=headers)
 
         if add_response.status_code == requests.codes.created:
-            _LOGGER.info(f"Successfully added {media_type} '{title}' to {service_name.capitalize()}")
+            _LOGGER.info(f"Successfully added {media_type} '{title}' to {service_name}")
         else:
-            _LOGGER.error(f"Failed to add {media_type} '{title}' to {service_name.capitalize()}: {add_response.text}")
+            _LOGGER.error(f"Failed to add {media_type} '{title}' to {service_name}: {add_response.text}")
     else:
         _LOGGER.info(f"No results found for {media_type} '{title}'")
 
@@ -373,6 +373,7 @@ def handle_add_overseerr_media(hass: HomeAssistant, call: ServiceCall, media_typ
                 # Add profile if available
                 if config_data.get("radarr_profile_id"):
                     payload["profileId"] = config_data.get("radarr_profile_id")
+                    
         elif media_type == "tv":
             # Add Sonarr server and profile if configured
             if config_data.get("sonarr_server_id"):

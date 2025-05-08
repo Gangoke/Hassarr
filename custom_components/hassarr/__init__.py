@@ -12,6 +12,7 @@ ADD_RADARR_MOVIE_SCHEMA = vol.Schema({
 
 ADD_SONARR_TV_SHOW_SCHEMA = vol.Schema({
     vol.Required("title"): cv.string,
+    vol.Optional("seasons"): cv.any(cv.string, [cv.positive_int]),
 })
 
 ADD_OVERSEERR_MOVIE_SCHEMA = vol.Schema({
@@ -20,6 +21,7 @@ ADD_OVERSEERR_MOVIE_SCHEMA = vol.Schema({
 
 ADD_OVERSEERR_TV_SHOW_SCHEMA = vol.Schema({
     vol.Required("title"): cv.string,
+    vol.Optional("seasons"): cv.any(cv.string, [cv.positive_int]),
 })
 
 def handle_add_movie(hass: HomeAssistant, call: ServiceCall) -> None:

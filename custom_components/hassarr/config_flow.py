@@ -293,7 +293,9 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             # Add Radarr server selection if available
             if radarr_options:
-                schema[vol.Optional("radarr_server_id")] = selector.SelectSelector(
+                # Default to first server if available
+                default_radarr = radarr_options[0]["value"] if radarr_options else None
+                schema[vol.Optional("radarr_server_id", default=default_radarr)] = selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=radarr_options,
                         mode=selector.SelectSelectorMode.DROPDOWN
@@ -302,7 +304,9 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             # Add Sonarr server selection if available
             if sonarr_options:
-                schema[vol.Optional("sonarr_server_id")] = selector.SelectSelector(
+                # Default to first server if available
+                default_sonarr = sonarr_options[0]["value"] if sonarr_options else None
+                schema[vol.Optional("sonarr_server_id", default=default_sonarr)] = selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=sonarr_options,
                         mode=selector.SelectSelectorMode.DROPDOWN

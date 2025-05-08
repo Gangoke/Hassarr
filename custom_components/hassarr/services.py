@@ -4,6 +4,7 @@ import time
 import re
 from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlparse, urlunparse
+from functools import lru_cache
 from .const import DOMAIN
 from homeassistant.core import HomeAssistant, ServiceCall
 
@@ -14,24 +15,82 @@ from homeassistant.core import HomeAssistant, ServiceCall
 _LOGGER = logging.getLogger(__name__)
 
 _RECENT_REQUESTS = {}
+_REQUEST_CACHE = {}
+_CACHE_TTL = 300  # Cache TTL in seconds
 
-def fetch_data(url: str, headers: dict) -> dict | None:
+def normalize_url(url: str) -> str:
+    """Normalize URL to ensure consistent format.
+    
+    Args:
+        url (str): The URL to normalize.
+        
+    Returns:
+        str: The normalized URL.
+    """
+    parsed = urlparse(url)
+    # Add https scheme if missing
+    if not parsed.scheme:
+        parsed = parsed._replace(scheme="https")
+    # Remove trailing slash
+    path = parsed.path
+    if path.endswith('/'):
+        path = path[:-1]
+        parsed = parsed._replace(path=path)
+    return urlunparse(parsed)
+
+def fetch_data(url: str, headers: dict, timeout: int = 10, max_retries: int = 3) -> dict | None:
     """Fetch data from the given URL with headers.
 
     Args:
         url (str): The URL to fetch data from.
         headers (dict): The headers to include in the request.
+        timeout (int): Request timeout in seconds.
+        max_retries (int): Maximum number of retry attempts.
 
     Returns:
         dict | None: The JSON response if successful, None otherwise.
     """
-    response = requests.get(url, headers=headers)
-    if response.status_code == requests.codes.ok:
-        return response.json()
-    else:
-        _LOGGER.error(f"Failed to fetch data from {url}: {response.text}")
-        return None
+    # Check cache first
+    cache_key = f"{url}:{str(headers)}"
+    current_time = time.time()
+    if cache_key in _REQUEST_CACHE:
+        cached_data, timestamp = _REQUEST_CACHE[cache_key]
+        if current_time - timestamp < _CACHE_TTL:
+            return cached_data
+    
+    # Clean up old cache entries
+    for key in list(_REQUEST_CACHE.keys()):
+        if current_time - _REQUEST_CACHE[key][1] > _CACHE_TTL:
+            del _REQUEST_CACHE[key]
+    
+    # Make the request with retries
+    normalized_url = normalize_url(url)
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(normalized_url, headers=headers, timeout=timeout)
+            if response.status_code == requests.codes.ok:
+                data = response.json()
+                # Cache the result
+                _REQUEST_CACHE[cache_key] = (data, current_time)
+                return data
+            elif response.status_code == 429:  # Rate limited
+                retry_after = int(response.headers.get('Retry-After', 5))
+                _LOGGER.warning(f"Rate limited. Waiting {retry_after}s before retry.")
+                time.sleep(retry_after)
+            else:
+                _LOGGER.error(f"Failed to fetch data from {url}: {response.text}")
+                if attempt < max_retries - 1:
+                    _LOGGER.info(f"Retrying ({attempt+1}/{max_retries})...")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+        except (requests.RequestException, ValueError) as e:
+            _LOGGER.error(f"Error fetching data from {url}: {str(e)}")
+            if attempt < max_retries - 1:
+                _LOGGER.info(f"Retrying ({attempt+1}/{max_retries})...")
+                time.sleep(2 ** attempt)  # Exponential backoff
+    
+    return None
 
+@lru_cache(maxsize=8)
 def get_root_folder_path(url: str, headers: dict) -> str | None:
     """Get root folder path from the given URL.
 

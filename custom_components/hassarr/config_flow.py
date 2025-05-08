@@ -308,14 +308,14 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Save the selected options
         if "radarr_server_id" in user_input and user_input["radarr_server_id"]:
-            self.radarr_server_id = user_input["radarr_server_id"]
+            self.radarr_server_id = int(user_input["radarr_server_id"]) 
             selected_radarr = self.radarr_servers[self.radarr_server_id]
             self.radarr_profile_id = selected_radarr.get("activeProfileId")
         else:
             self.radarr_server_id = None
             
         if "sonarr_server_id" in user_input and user_input["sonarr_server_id"]:
-            self.sonarr_server_id = user_input["sonarr_server_id"]
+            self.sonarr_server_id = int(user_input["sonarr_server_id"])
             selected_sonarr = self.sonarr_servers[self.sonarr_server_id]
             self.sonarr_profile_id = selected_sonarr.get("activeProfileId")
         else:
@@ -403,37 +403,41 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             # Update with the new selections
             if "radarr_server_id" in user_input:
-                data["radarr_server_id"] = user_input["radarr_server_id"]
-                # Get the active profile ID for the selected Radarr server
+                # Convert to integer if it's a string ID, or set to None if empty
                 if user_input["radarr_server_id"]:
+                    data["radarr_server_id"] = int(user_input["radarr_server_id"]) 
+                    # Get the active profile ID for the selected Radarr server
                     radarr_servers = await self._fetch_overseerr_servers(
                         data.get("overseerr_url"), 
                         data.get("overseerr_api_key"), 
                         "radarr"
                     )
                     for server in radarr_servers:
-                        if server["id"] == user_input["radarr_server_id"]:
+                        if server["id"] == int(user_input["radarr_server_id"]):
                             data["radarr_profile_id"] = server.get("activeProfileId")
                             break
                 else:
+                    data["radarr_server_id"] = None
                     # If server deselected, remove profile too
                     if "radarr_profile_id" in data:
                         del data["radarr_profile_id"]
                         
             if "sonarr_server_id" in user_input:
-                data["sonarr_server_id"] = user_input["sonarr_server_id"]
-                # Get the active profile ID for the selected Sonarr server
+                # Convert to integer if it's a string ID, or set to None if empty
                 if user_input["sonarr_server_id"]:
+                    data["sonarr_server_id"] = int(user_input["sonarr_server_id"])
+                    # Get the active profile ID for the selected Sonarr server
                     sonarr_servers = await self._fetch_overseerr_servers(
                         data.get("overseerr_url"), 
                         data.get("overseerr_api_key"), 
                         "sonarr"
                     )
                     for server in sonarr_servers:
-                        if server["id"] == user_input["sonarr_server_id"]:
+                        if server["id"] == int(user_input["sonarr_server_id"]):
                             data["sonarr_profile_id"] = server.get("activeProfileId")
                             break
                 else:
+                    data["sonarr_server_id"] = None
                     # If server deselected, remove profile too
                     if "sonarr_profile_id" in data:
                         del data["sonarr_profile_id"]

@@ -327,7 +327,8 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Save the selected options
-        if "radarr_server_id" in user_input and user_input["radarr_server_id"]:
+        if "radarr_server_id" in user_input:
+            data["radarr_server_id"] = int(user_input["radarr_server_id"]) if user_input["radarr_server_id"] else None
             self.radarr_server_id = user_input["radarr_server_id"]
             selected_radarr = self.radarr_servers[self.radarr_server_id]
             self.radarr_profile_id = selected_radarr.get("activeProfileId")

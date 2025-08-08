@@ -20,14 +20,19 @@ from .const import (
     CONF_PRESETS, CONF_DEFAULT_TV_SEASONS, DEFAULT_TV_SEASONS_CHOICES,
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
 )
+
 LOGGER = logging.getLogger(__name__)
 
-BACKEND_OPTIONS = ["overseerr", "arr"]
+BACKEND_LABELS = ["Overseerr", "Radarr/Sonarr"]
 URL_RE = re.compile(r"^https?://", re.I)
 
 
 def _valid_url(url: str) -> bool:
     return bool(URL_RE.match(url.strip()))
+
+
+def _map_backend_label(label: str) -> str:
+    return "overseerr" if label == "Overseerr" else "arr"
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -36,26 +41,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
         if user_input is not None:
-            LOGGER.debug("[hassarr] user step input: %s", user_input)
-            self._backend_choice = user_input[CONF_BACKEND]
+            sel = user_input[CONF_BACKEND]
+            self._backend_choice = _map_backend_label(sel)
             if self._backend_choice == "overseerr":
                 return await self.async_step_ovsr_creds()
             return await self.async_step_arr_backend()
 
-        schema = vol.Schema({vol.Required(CONF_BACKEND, default="overseerr"): vol.In(BACKEND_OPTIONS)})
+        schema = vol.Schema({vol.Required(CONF_BACKEND, default=BACKEND_LABELS[0]): vol.In(BACKEND_LABELS)})
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
-    # ---- Overseerr: step 1 (credentials) ----
     async def async_step_ovsr_creds(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
-        # Define schema early so we can reference it on early returns
         schema = vol.Schema({
             vol.Required(CONF_BASE_URL): str,
             vol.Required(CONF_API_KEY): str,
             vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(DEFAULT_TV_SEASONS_CHOICES),
         })
         if user_input is not None:
-            LOGGER.debug("[hassarr] ovsr_creds input received")
             base_url = user_input[CONF_BASE_URL].strip()
             api_key = user_input[CONF_API_KEY].strip()
             default_tv = user_input[CONF_DEFAULT_TV_SEASONS]
@@ -63,13 +65,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not _valid_url(base_url):
                 errors["base"] = "invalid_url"
             else:
-                try:
-                    from .api_common import OverseerrClient  # lazy import
-                except Exception as imp_err:  # noqa: BLE001
-                    LOGGER.exception("[hassarr] Failed to import OverseerrClient: %s", imp_err)
-                    errors["base"] = "cannot_connect"
-                    return self.async_show_form(step_id="ovsr_creds", data_schema=schema, errors=errors)
-
+                from .api_common import OverseerrClient
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(base_url, api_key, session)
                 if await client.ping():
@@ -86,8 +82,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         if default_sonarr:
                             det_s = await client.get_sonarr_details(default_sonarr["id"])
                             tv_profiles = {str(p["id"]): p["name"] for p in (det_s.get("profiles") or [])}
-                    except Exception as profile_err:  # noqa: BLE001
-                        LOGGER.debug("[hassarr] profile detail fetch failed: %s", profile_err)
+                    except Exception:  # noqa: BLE001
+                        pass
                     self._ovsr_ctx = {
                         "base_url": base_url,
                         "api_key": api_key,
@@ -97,20 +93,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "movie_profiles": movie_profiles,
                         "tv_profiles": tv_profiles,
                     }
-                    LOGGER.debug("[hassarr] ovsr_creds collected services: radarr=%d sonarr=%d", len(radarr), len(sonarr))
                     return await self.async_step_ovsr_selects()
-                else:
-                    errors["base"] = "cannot_connect"
+                errors["base"] = "cannot_connect"
 
         return self.async_show_form(step_id="ovsr_creds", data_schema=schema, errors=errors)
 
-    # ---- Overseerr: step 2 (optional selects) ----
     async def async_step_ovsr_selects(self, user_input: Dict[str, Any] | None = None):
         ctx = getattr(self, "_ovsr_ctx", {})
         errors: Dict[str, str] = {}
 
         if user_input is not None:
-            LOGGER.debug("[hassarr] ovsr_selects submission: %s", user_input)
             data = {
                 CONF_BACKEND: "overseerr",
                 CONF_BASE_URL: ctx["base_url"],
@@ -133,14 +125,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         radarr = ctx.get("radarr") or []
         sonarr = ctx.get("sonarr") or []
-        server_choices = {}
+        server_choices: dict[str, str] = {}
         for s in radarr:
-            server_choices[str(s["id"])] = f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"
+            label = f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"
+            server_choices[label] = str(s["id"])  # label -> id
         for s in sonarr:
-            server_choices[str(s["id"])] = f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"
+            label = f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"
+            server_choices[label] = str(s["id"])  # label -> id
 
-        movie_profile_choices = ctx.get("movie_profiles") or {}
-        tv_profile_choices = ctx.get("tv_profiles") or {}
+        # ctx holds id->name; invert to label->id
+        movie_profile_choices = {name: mid for mid, name in (ctx.get("movie_profiles") or {}).items()}
+        tv_profile_choices = {name: tid for tid, name in (ctx.get("tv_profiles") or {}).items()}
 
         schema = vol.Schema({
             vol.Optional(CONF_OVERSEERR_SERVER_ID): vol.In(server_choices) if server_choices else str,
@@ -149,7 +144,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
         return self.async_show_form(step_id="ovsr_selects", data_schema=schema, errors=errors)
 
-    # ---- ARR backend (single step) ----
     async def async_step_arr_backend(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
         session = async_get_clientsession(self.hass)
@@ -167,7 +161,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
         if user_input is not None:
-            LOGGER.debug("[hassarr] arr_backend input received")
             radarr_url = user_input[CONF_RADARR_URL].strip()
             radarr_key = user_input[CONF_RADARR_KEY].strip()
             radarr_root = user_input[CONF_RADARR_ROOT].strip()
@@ -183,13 +176,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not (_valid_url(radarr_url) and _valid_url(sonarr_url)):
                 errors["base"] = "invalid_url"
             else:
-                try:
-                    from .api_common import RadarrClient, SonarrClient  # lazy import
-                except Exception as imp_err:  # noqa: BLE001
-                    LOGGER.exception("[hassarr] Failed to import ARR clients: %s", imp_err)
-                    errors["base"] = "cannot_connect"
-                    return self.async_show_form(step_id="arr_backend", data_schema=schema, errors=errors)
-
+                from .api_common import RadarrClient, SonarrClient
                 rc = RadarrClient(radarr_url, radarr_key, session)
                 sc = SonarrClient(sonarr_url, sonarr_key, session)
                 if await rc.ping() and await sc.ping():
@@ -225,7 +212,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self.entry = entry
 
     async def async_step_init(self, user_input=None) -> FlowResult:
-        errors = {}
+        errors: Dict[str, str] = {}
 
         current_presets = self.entry.options.get(CONF_PRESETS, [])
         current_default = self.entry.options.get(
@@ -238,16 +225,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         ovsr_tv_profiles: dict[str, str] = {}
         if self.entry.data.get(CONF_BACKEND) == "overseerr":
             try:
-                from .api_common import OverseerrClient  # lazy import
+                from .api_common import OverseerrClient
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(self.entry.data[CONF_BASE_URL], self.entry.data[CONF_API_KEY], session)
                 if await client.ping():
                     radarr = await client.list_radarr()
                     sonarr = await client.list_sonarr()
                     for s in radarr:
-                        ovsr_server_choices[str(s["id"])] = f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"
+                        ovsr_server_choices[f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
                     for s in sonarr:
-                        ovsr_server_choices[str(s["id"])] = f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"
+                        ovsr_server_choices[f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
                     default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
                     default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
                     if default_radarr:
@@ -293,7 +280,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             except Exception:  # noqa: BLE001
                 errors["base"] = "invalid_json"
 
-        schema_dict = {
+        schema_dict: dict[Any, Any] = {
             vol.Required(CONF_DEFAULT_TV_SEASONS, default=current_default): vol.In(DEFAULT_TV_SEASONS_CHOICES),
             vol.Required("presets_json", default=json.dumps(current_presets, indent=2) if current_presets else "[]"): str,
         }
@@ -302,14 +289,17 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             server_default = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID) else None
             movie_prof_default = str(get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_MOVIE)) if get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_MOVIE) else None
             tv_prof_default = str(get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_TV)) if get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_TV) else None
+            # invert id->name to label->id
+            ovsr_movie_choices = {name: mid for mid, name in ovsr_movie_profiles.items()}
+            ovsr_tv_choices = {name: tid for tid, name in ovsr_tv_profiles.items()}
             schema_dict[vol.Optional(CONF_OVERSEERR_SERVER_ID, default=server_default)] = (
                 vol.In(ovsr_server_choices) if ovsr_server_choices else vol.Coerce(int)
             )
             schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_MOVIE, default=movie_prof_default)] = (
-                vol.In(ovsr_movie_profiles) if ovsr_movie_profiles else vol.Coerce(int)
+                vol.In(ovsr_movie_choices) if ovsr_movie_choices else vol.Coerce(int)
             )
             schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_TV, default=tv_prof_default)] = (
-                vol.In(ovsr_tv_profiles) if ovsr_tv_profiles else vol.Coerce(int)
+                vol.In(ovsr_tv_choices) if ovsr_tv_choices else vol.Coerce(int)
             )
 
         schema = vol.Schema(schema_dict)

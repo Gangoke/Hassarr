@@ -1,0 +1,68 @@
+request_media:
+  name: Request media
+  description: Request via Overseerr or directly to Sonarr/Radarr (chosen at setup).
+  fields:
+    query:
+      required: true
+      selector:
+        text: {}
+      description: Title or "tmdb:<id>" for precision (e.g., tmdb:27205).
+    media_type:
+      required: true
+      selector:
+        select:
+          options: [movie, tv, show]
+      description: "'movie' or 'tv' (you can also say 'show')."
+    seasons:
+      required: false
+      selector:
+        text: {}
+      description: >
+        TV only. "all" for all seasons, or a list like [1,2,5] for specific seasons.
+        If omitted, the integration uses your default (Season 1 or All).
+    is_4k:
+      required: false
+      default: false
+      selector:
+        boolean: {}
+      description: Overseerr backend only.
+
+    # Overseerr-only overrides
+    overseerr_server_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+      description: Overseerr service/instance ID to target.
+    overseerr_profile_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+      description: Overseerr profile ID (Radarr for movies, Sonarr for TV).
+
+    # ARR-only optional overrides/presets
+    profile_preset:
+      required: false
+      selector:
+        text: {}
+      description: Name of a preset configured in Options (e.g., "UHD", "Kids") — ARR backend only.
+    quality_profile_id:
+      required: false
+      selector:
+        number:
+          min: 1
+      description: Override ARR quality profile id for this request.
+    language_profile_id:
+      required: false
+      selector:
+        number:
+          min: 1
+      description: Override Sonarr language profile id for this TV request.
+    root_folder_path:
+      required: false
+      selector:
+        text: {}
+      description: Override root folder path for this request.

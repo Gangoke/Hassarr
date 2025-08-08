@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Choose Backend",
+        "description": "Use Overseerr or Sonarr/Radarr?",
+        "data": {
+          "backend": "Backend"
+        }
+      },
+      "ovsr_creds": {
+        "title": "Overseerr \u2014 Credentials",
+        "description": "Enter Overseerr URL and API key; next you'll select defaults from live data."
+      },
+      "ovsr_selects": {
+        "title": "Overseerr \u2014 Defaults (Optional)",
+        "description": "Pick a default server and profiles (you can change these later in Options)."
+      },
+      "arr_backend": {
+        "title": "ARR Settings",
+        "description": "Enter Radarr and Sonarr settings."
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect or invalid settings."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Media Request Options",
+        "description": "Set default TV seasons, Overseerr defaults, and manage ARR profile presets.",
+        "data": {
+          "default_tv_seasons": "Default TV seasons",
+          "presets_json": "Presets JSON",
+          "overseerr_server_id": "Overseerr server",
+          "overseerr_profile_id_movie": "Overseerr movie profile",
+          "overseerr_profile_id_tv": "Overseerr TV profile"
+        }
+      }
+    },
+    "error": {
+      "invalid_json": "Invalid JSON or schema."
+    }
+  },
+  "services": {
+    "request_media": {
+      "name": "Request media",
+      "description": "Search and request media using the selected backend."
+    }
+  }
+}

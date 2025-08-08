@@ -4,6 +4,7 @@ from typing import Any, Dict
 import json
 import re
 import voluptuous as vol
+import logging
 
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -19,7 +20,7 @@ from .const import (
     CONF_PRESETS, CONF_DEFAULT_TV_SEASONS, DEFAULT_TV_SEASONS_CHOICES,
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
 )
-from .api_common import OverseerrClient, RadarrClient, SonarrClient
+LOGGER = logging.getLogger(__name__)
 
 BACKEND_OPTIONS = ["overseerr", "arr"]
 URL_RE = re.compile(r"^https?://", re.I)
@@ -29,12 +30,13 @@ def _valid_url(url: str) -> bool:
     return bool(URL_RE.match(url.strip()))
 
 
-class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 6
 
     async def async_step_user(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
         if user_input is not None:
+            LOGGER.debug("[hassarr] user step input: %s", user_input)
             self._backend_choice = user_input[CONF_BACKEND]
             if self._backend_choice == "overseerr":
                 return await self.async_step_ovsr_creds()
@@ -46,7 +48,14 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # ---- Overseerr: step 1 (credentials) ----
     async def async_step_ovsr_creds(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
+        # Define schema early so we can reference it on early returns
+        schema = vol.Schema({
+            vol.Required(CONF_BASE_URL): str,
+            vol.Required(CONF_API_KEY): str,
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(DEFAULT_TV_SEASONS_CHOICES),
+        })
         if user_input is not None:
+            LOGGER.debug("[hassarr] ovsr_creds input received")
             base_url = user_input[CONF_BASE_URL].strip()
             api_key = user_input[CONF_API_KEY].strip()
             default_tv = user_input[CONF_DEFAULT_TV_SEASONS]
@@ -54,45 +63,45 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not _valid_url(base_url):
                 errors["base"] = "invalid_url"
             else:
+                try:
+                    from .api_common import OverseerrClient  # lazy import
+                except Exception as imp_err:  # noqa: BLE001
+                    LOGGER.exception("[hassarr] Failed to import OverseerrClient: %s", imp_err)
+                    errors["base"] = "cannot_connect"
+                    return self.async_show_form(step_id="ovsr_creds", data_schema=schema, errors=errors)
+
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(base_url, api_key, session)
                 if await client.ping():
+                    radarr = await client.list_radarr()
+                    sonarr = await client.list_sonarr()
+                    movie_profiles: dict[str, str] = {}
+                    tv_profiles: dict[str, str] = {}
                     try:
-                        radarr = await client.list_radarr()
-                        sonarr = await client.list_sonarr()
-                        movie_profiles = {}
-                        tv_profiles = {}
-                        try:
-                            default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
-                            default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
-                            if default_radarr:
-                                det = await client.get_radarr_details(default_radarr["id"])
-                                movie_profiles = {str(p["id"]): p["name"] for p in (det.get("profiles") or [])}
-                            if default_sonarr:
-                                det = await client.get_sonarr_details(default_sonarr["id"])
-                                tv_profiles = {str(p["id"]): p["name"] for p in (det.get("profiles") or [])}
-                        except Exception as e:  # noqa: BLE001
-                            # allow profile lists to be empty
-                            movie_profiles = movie_profiles or {}
-                            tv_profiles = tv_profiles or {}
-                        self._ovsr_ctx = {
-                            "base_url": base_url,
-                            "api_key": api_key,
-                            "default_tv": default_tv,
-                            "radarr": radarr,
-                            "sonarr": sonarr,
-                            "movie_profiles": movie_profiles,
-                            "tv_profiles": tv_profiles,
-                        }
-                        return await self.async_step_ovsr_selects()
+                        default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
+                        default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
+                        if default_radarr:
+                            det_r = await client.get_radarr_details(default_radarr["id"])
+                            movie_profiles = {str(p["id"]): p["name"] for p in (det_r.get("profiles") or [])}
+                        if default_sonarr:
+                            det_s = await client.get_sonarr_details(default_sonarr["id"])
+                            tv_profiles = {str(p["id"]): p["name"] for p in (det_s.get("profiles") or [])}
+                    except Exception as profile_err:  # noqa: BLE001
+                        LOGGER.debug("[hassarr] profile detail fetch failed: %s", profile_err)
+                    self._ovsr_ctx = {
+                        "base_url": base_url,
+                        "api_key": api_key,
+                        "default_tv": default_tv,
+                        "radarr": radarr,
+                        "sonarr": sonarr,
+                        "movie_profiles": movie_profiles,
+                        "tv_profiles": tv_profiles,
+                    }
+                    LOGGER.debug("[hassarr] ovsr_creds collected services: radarr=%d sonarr=%d", len(radarr), len(sonarr))
+                    return await self.async_step_ovsr_selects()
                 else:
                     errors["base"] = "cannot_connect"
 
-        schema = vol.Schema({
-            vol.Required(CONF_BASE_URL): str,
-            vol.Required(CONF_API_KEY): str,
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(DEFAULT_TV_SEASONS_CHOICES),
-        })
         return self.async_show_form(step_id="ovsr_creds", data_schema=schema, errors=errors)
 
     # ---- Overseerr: step 2 (optional selects) ----
@@ -101,6 +110,7 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: Dict[str, str] = {}
 
         if user_input is not None:
+            LOGGER.debug("[hassarr] ovsr_selects submission: %s", user_input)
             data = {
                 CONF_BACKEND: "overseerr",
                 CONF_BASE_URL: ctx["base_url"],
@@ -143,8 +153,21 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_arr_backend(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
         session = async_get_clientsession(self.hass)
+        schema = vol.Schema({
+            vol.Required(CONF_RADARR_URL): str,
+            vol.Required(CONF_RADARR_KEY): str,
+            vol.Required(CONF_RADARR_ROOT): str,
+            vol.Required(CONF_RADARR_PROFILE): vol.Coerce(int),
+            vol.Required(CONF_SONARR_URL): str,
+            vol.Required(CONF_SONARR_KEY): str,
+            vol.Required(CONF_SONARR_ROOT): str,
+            vol.Required(CONF_SONARR_PROFILE): vol.Coerce(int),
+            vol.Optional(CONF_SONARR_LANG_PROFILE): vol.Coerce(int),
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(DEFAULT_TV_SEASONS_CHOICES),
+        })
 
         if user_input is not None:
+            LOGGER.debug("[hassarr] arr_backend input received")
             radarr_url = user_input[CONF_RADARR_URL].strip()
             radarr_key = user_input[CONF_RADARR_KEY].strip()
             radarr_root = user_input[CONF_RADARR_ROOT].strip()
@@ -160,6 +183,13 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not (_valid_url(radarr_url) and _valid_url(sonarr_url)):
                 errors["base"] = "invalid_url"
             else:
+                try:
+                    from .api_common import RadarrClient, SonarrClient  # lazy import
+                except Exception as imp_err:  # noqa: BLE001
+                    LOGGER.exception("[hassarr] Failed to import ARR clients: %s", imp_err)
+                    errors["base"] = "cannot_connect"
+                    return self.async_show_form(step_id="arr_backend", data_schema=schema, errors=errors)
+
                 rc = RadarrClient(radarr_url, radarr_key, session)
                 sc = SonarrClient(sonarr_url, sonarr_key, session)
                 if await rc.ping() and await sc.ping():
@@ -182,18 +212,6 @@ class HassarrConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return self.async_create_entry(title="Hassarr (Sonarr/Radarr)", data=data)
                 errors["base"] = "cannot_connect"
 
-        schema = vol.Schema({
-            vol.Required(CONF_RADARR_URL): str,
-            vol.Required(CONF_RADARR_KEY): str,
-            vol.Required(CONF_RADARR_ROOT): str,
-            vol.Required(CONF_RADARR_PROFILE): vol.Coerce(int),
-            vol.Required(CONF_SONARR_URL): str,
-            vol.Required(CONF_SONARR_KEY): str,
-            vol.Required(CONF_SONARR_ROOT): str,
-            vol.Required(CONF_SONARR_PROFILE): vol.Coerce(int),
-            vol.Optional(CONF_SONARR_LANG_PROFILE): vol.Coerce(int),
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(DEFAULT_TV_SEASONS_CHOICES),
-        })
         return self.async_show_form(step_id="arr_backend", data_schema=schema, errors=errors)
 
 
@@ -220,6 +238,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         ovsr_tv_profiles: dict[str, str] = {}
         if self.entry.data.get(CONF_BACKEND) == "overseerr":
             try:
+                from .api_common import OverseerrClient  # lazy import
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(self.entry.data[CONF_BASE_URL], self.entry.data[CONF_API_KEY], session)
                 if await client.ping():

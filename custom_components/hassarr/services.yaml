@@ -1,6 +1,6 @@
 request_media:
   name: Request media
-  description: Request via Overseerr or directly to Sonarr/Radarr (chosen at setup).
+  description: Request via Overseerr or directly to Sonarr/Radarr (chosen at setup). Fires hassarr_request_complete / hassarr_request_failed events.
   fields:
     query:
       required: true
@@ -18,8 +18,8 @@ request_media:
       selector:
         text: {}
       description: >
-        TV only. "all" for all seasons, or a list like [1,2,5] for specific seasons.
-        If omitted, the integration uses your default (Season 1 or All).
+        TV only. 'all' for all seasons, or a JSON-like list e.g. [1,2,5] for specific seasons. If
+        omitted, the integration uses your default (Season 1 or All).
     is_4k:
       required: false
       default: false
@@ -48,7 +48,7 @@ request_media:
       required: false
       selector:
         text: {}
-      description: Name of a preset configured in Options (e.g., "UHD", "Kids") — ARR backend only.
+      description: Name of a preset configured in Options (e.g., "UHD", "Kids"). ARR backend only.
     quality_profile_id:
       required: false
       selector:

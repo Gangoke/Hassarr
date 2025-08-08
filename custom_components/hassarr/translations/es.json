@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Elegir backend",
+        "description": "¿Usar Overseerr o Sonarr/Radarr?",
+        "data": {"backend": "Backend"}
+      },
+      "ovsr_creds": {
+        "title": "Overseerr — Credenciales",
+        "description": "Introduce la URL de Overseerr y la clave API; después seleccionarás valores predeterminados obtenidos en vivo."
+      },
+      "ovsr_selects": {
+        "title": "Overseerr — Valores predeterminados (Opcional)",
+        "description": "Elige un servidor y perfiles predeterminados (puedes cambiarlos luego en Opciones)."
+      },
+      "arr_backend": {
+        "title": "Configuración ARR",
+        "description": "Introduce la configuración de Radarr y Sonarr."
+      }
+    },
+    "error": {
+      "cannot_connect": "No se puede conectar o configuración inválida.",
+      "invalid_url": "La URL proporcionada no es válida."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opciones de Solicitud de Medios",
+        "description": "Configura temporadas predeterminadas de TV, valores por defecto de Overseerr y gestiona presets de ARR.",
+        "data": {
+          "default_tv_seasons": "Temporadas de TV predeterminadas",
+          "presets_json": "Presets JSON",
+          "overseerr_server_id": "Servidor Overseerr",
+          "overseerr_profile_id_movie": "Perfil de película Overseerr",
+          "overseerr_profile_id_tv": "Perfil de TV Overseerr"
+        }
+      }
+    },
+    "error": {
+      "invalid_json": "JSON inválido o esquema incorrecto."
+    }
+  },
+  "services": {
+    "request_media": {
+      "name": "Solicitar medio",
+      "description": "Busca y solicita medios usando el backend seleccionado. Emite eventos al éxito o fallo."
+    }
+  }
+}

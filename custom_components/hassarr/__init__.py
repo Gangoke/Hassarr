@@ -13,6 +13,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     DOMAIN,
     SERVICE_REQUEST_MEDIA,
+    EVENT_REQUEST_COMPLETE, EVENT_REQUEST_FAILED,
     CONF_BACKEND,
     # Overseerr
     CONF_BASE_URL, CONF_API_KEY,
@@ -26,16 +27,18 @@ from .const import (
     CONF_PROFILE_PRESET, CONF_QUALITY_PROFILE_ID, CONF_LANGUAGE_PROFILE_ID, CONF_ROOT_FOLDER_PATH,
     STORAGE_BACKEND, STORAGE_CLIENT,
 )
-from .api_overseerr import OverseerrClient, OverseerrError
-from .api_arr import RadarrClient, SonarrClient, ArrError
+from .api_common import OverseerrClient, OverseerrError, RadarrClient, SonarrClient, ArrError
 
 _LOGGER = logging.getLogger(__name__)
+
+# More strict seasons validation: list of positive ints OR the string "all"
+SEASONS_SCHEMA = vol.Any("all", [cv.positive_int])
 
 SERVICE_REQUEST_SCHEMA = vol.Schema(
     {
         vol.Required("query"): cv.string,
         vol.Required("media_type"): vol.In(["movie", "tv", "show"]),
-        vol.Optional("seasons"): vol.Any(cv.string, [cv.positive_int]),
+        vol.Optional("seasons"): SEASONS_SCHEMA,
         vol.Optional("is_4k", default=False): cv.boolean,
         # Overseerr overrides
         vol.Optional(CONF_OVERSEERR_SERVER_ID_OVERRIDE): cv.positive_int,
@@ -49,7 +52,7 @@ SERVICE_REQUEST_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa: D401
     return True
 
 
@@ -86,14 +89,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             if backend == "overseerr":
                 client: OverseerrClient = store[STORAGE_CLIENT]
-                # Resolve server/profile defaults + overrides, prefer Options over Data
                 server_id = data.get(CONF_OVERSEERR_SERVER_ID_OVERRIDE) or entry.options.get(CONF_OVERSEERR_SERVER_ID) or entry.data.get(CONF_OVERSEERR_SERVER_ID)
                 if mt == "movie":
                     profile_id = data.get(CONF_OVERSEERR_PROFILE_ID_OVERRIDE) or entry.options.get(CONF_OVERSEERR_PROFILE_ID_MOVIE) or entry.data.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
                 else:
                     profile_id = data.get(CONF_OVERSEERR_PROFILE_ID_OVERRIDE) or entry.options.get(CONF_OVERSEERR_PROFILE_ID_TV) or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
 
-                await client.request_media(
+                resp = await client.request_media(
                     query=data["query"],
                     media_type=mt,
                     seasons=seasons_param,
@@ -101,33 +103,59 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     server_id=server_id,
                     profile_id=profile_id,
                 )
+                _fire_event(hass, EVENT_REQUEST_COMPLETE, {
+                    "backend": backend,
+                    "media_type": mt,
+                    "query": data["query"],
+                    "tmdb_id": resp.get("media", {}).get("tmdbId") or resp.get("mediaId"),
+                    "response": resp,
+                })
             else:
                 if mt == "movie":
                     sel = _resolve_preset(entry, mt, data)
                     radarr: RadarrClient = store["radarr"]
-                    await radarr.add_movie(
-                        tmdb_id=await _ensure_tmdb_id_for_movie(radarr, data["query"]),
+                    tmdb_id = await _ensure_tmdb_id_for_movie(radarr, data["query"])
+                    resp = await radarr.add_movie(
+                        tmdb_id=tmdb_id,
                         root=sel["root"],
                         profile_id=sel["quality_profile_id"],
                     )
                 else:
                     sel = _resolve_preset(entry, mt, data)
                     sonarr: SonarrClient = store["sonarr"]
-                    await sonarr.add_series(
-                        tmdb_id=await _ensure_tmdb_id_for_series(sonarr, data["query"]),
+                    tmdb_id = await _ensure_tmdb_id_for_series(sonarr, data["query"])
+                    resp = await sonarr.add_series(
+                        tmdb_id=tmdb_id,
                         root=sel["root"],
                         quality_profile_id=sel["quality_profile_id"],
                         language_profile_id=sel.get("language_profile_id"),
                         seasons=seasons_param,
                     )
+                _fire_event(hass, EVENT_REQUEST_COMPLETE, {
+                    "backend": backend,
+                    "media_type": mt,
+                    "query": data["query"],
+                    "tmdb_id": tmdb_id,
+                    "response": resp,
+                })
             _LOGGER.info("Request processed for %s: %s", mt, data["query"])
         except (OverseerrError, ArrError) as e:
-            _LOGGER.error("Request failed: %s", e)
+            _LOGGER.error("Request failed (%s): %s", type(e).__name__, e)
+            _fire_event(hass, EVENT_REQUEST_FAILED, {
+                "backend": backend,
+                "media_type": mt,
+                "query": data["query"],
+                "error": str(e),
+            })
             raise
 
     hass.services.async_register(DOMAIN, SERVICE_REQUEST_MEDIA, _svc_request)
     entry.async_on_unload(entry.add_update_listener(_reload_on_update))
     return True
+
+
+def _fire_event(hass: HomeAssistant, event: str, data: dict[str, Any]) -> None:
+    hass.bus.async_fire(event, data)
 
 
 async def _reload_on_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -141,8 +169,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-def _resolve_seasons_default(entry: ConfigEntry, media_type: str, seasons_value):
-    """Return seasons value honoring options/data default when not provided."""
+def _resolve_seasons_default(entry: ConfigEntry, media_type: str, seasons_value: Any) -> list[int] | str | None:
     from .const import CONF_DEFAULT_TV_SEASONS
     mt = "tv" if media_type == "show" else media_type
     if mt != "tv":
@@ -154,7 +181,6 @@ def _resolve_seasons_default(entry: ConfigEntry, media_type: str, seasons_value)
 
 
 def _resolve_preset(entry: ConfigEntry, media_type: str, call_data: dict) -> dict:
-    """Resolve ARR root/profile/lang using overrides → preset → entry defaults."""
     from .const import (
         CONF_PRESETS, CONF_PROFILE_PRESET, CONF_ROOT_FOLDER_PATH,
         CONF_QUALITY_PROFILE_ID, CONF_LANGUAGE_PROFILE_ID,
@@ -209,5 +235,5 @@ async def _ensure_tmdb_id_for_series(sonarr: SonarrClient, query: str) -> int:
         raise ArrError(f"No Sonarr lookup results for '{query}'")
     tmdb = results[0].get("tmdbId")
     if not tmdb:
-        raise ArrError("No TMDB id in Sonarr lookup result. Provide a title that resolves to TMDB or use 'tmdb:<id>'.")
+        raise ArrError("No TMDB id in Sonarr lookup result. Provide title that resolves or use 'tmdb:<id>'.")
     return int(tmdb)

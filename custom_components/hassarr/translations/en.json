@@ -4,16 +4,14 @@
       "user": {
         "title": "Choose Backend",
         "description": "Use Overseerr or Sonarr/Radarr?",
-        "data": {
-          "backend": "Backend"
-        }
+        "data": {"backend": "Backend"}
       },
       "ovsr_creds": {
-        "title": "Overseerr \u2014 Credentials",
+        "title": "Overseerr — Credentials",
         "description": "Enter Overseerr URL and API key; next you'll select defaults from live data."
       },
       "ovsr_selects": {
-        "title": "Overseerr \u2014 Defaults (Optional)",
+        "title": "Overseerr — Defaults (Optional)",
         "description": "Pick a default server and profiles (you can change these later in Options)."
       },
       "arr_backend": {
@@ -22,7 +20,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect or invalid settings."
+      "cannot_connect": "Cannot connect or invalid settings.",
+      "invalid_url": "The provided URL is invalid."
     }
   },
   "options": {
@@ -46,7 +45,7 @@
   "services": {
     "request_media": {
       "name": "Request media",
-      "description": "Search and request media using the selected backend."
+      "description": "Search and request media using the selected backend. Emits events on success/failure."
     }
   }
 }

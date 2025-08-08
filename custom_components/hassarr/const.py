@@ -1,7 +1,11 @@
-DOMAIN = "overseerr"
+DOMAIN = "hassarr"
 
 # Service name
 SERVICE_REQUEST_MEDIA = "request_media"
+
+# Events
+EVENT_REQUEST_COMPLETE = f"{DOMAIN}_request_complete"
+EVENT_REQUEST_FAILED = f"{DOMAIN}_request_failed"
 
 # Backend selection
 CONF_BACKEND = "backend"  # "overseerr" | "arr"

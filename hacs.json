@@ -1,8 +1,8 @@
 {
-  "name": "Media Requests (Overseerr / Sonarr+Radarr)",
+  "name": "Hassarr Media Requests (Overseerr / Sonarr+Radarr)",
   "render_readme": true,
   "domains": [
-    "overseerr"
+    "hassarr"
   ],
   "country": "ALL",
   "homeassistant": "2024.6.0",

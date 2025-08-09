@@ -93,5 +93,19 @@
       "name": "Solicitar medio",
       "description": "Busca y solicita medios usando el backend seleccionado. Emite eventos al éxito o fallo."
     }
+  },
+  "selector": {
+    "backend": {
+      "options": {
+        "overseerr": "Overseerr",
+        "arr": "Radarr/Sonarr"
+      }
+    },
+    "default_tv_seasons": {
+      "options": {
+        "season1": "Temporada 1",
+        "all": "Todas las temporadas"
+      }
+    }
   }
 }

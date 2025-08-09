@@ -6,6 +6,7 @@ import re
 import voluptuous as vol
 import logging
 from homeassistant.helpers.translation import async_get_translations
+from homeassistant.helpers import selector
 
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -89,29 +90,29 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_ovsr_creds()
             return await self.async_step_arr_backend()
 
-        backend_map = await _option_labels(
-            self.hass,
-            category="config",
-            path="step.user.data_options.backend",
-            values=["overseerr", "arr"],
-        )
         schema = vol.Schema({
-            vol.Required(CONF_BACKEND, default="overseerr"): vol.In(backend_map)
+            vol.Required(CONF_BACKEND, default="overseerr"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["overseerr", "arr"],
+                    translation_key="backend",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     async def async_step_ovsr_creds(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
-        seasons_map = await _option_labels(
-            self.hass,
-            category="config",
-            path="step.ovsr_creds.data_options.default_tv_seasons",
-            values=["season1", "all"],
-        )
         schema = vol.Schema({
             vol.Required(CONF_BASE_URL): str,
             vol.Required(CONF_API_KEY): str,
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(seasons_map),
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["season1", "all"],
+                    translation_key="default_tv_seasons",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
         })
         if user_input is not None:
             base_url = user_input[CONF_BASE_URL].strip()
@@ -203,12 +204,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_arr_backend(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
         session = async_get_clientsession(self.hass)
-        seasons_map = await _option_labels(
-            self.hass,
-            category="config",
-            path="step.arr_backend.data_options.default_tv_seasons",
-            values=["season1", "all"],
-        )
         schema = vol.Schema({
             vol.Required(CONF_RADARR_URL): str,
             vol.Required(CONF_RADARR_KEY): str,
@@ -219,7 +214,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_SONARR_ROOT): str,
             vol.Required(CONF_SONARR_PROFILE): vol.Coerce(int),
             vol.Optional(CONF_SONARR_LANG_PROFILE): vol.Coerce(int),
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(seasons_map),
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["season1", "all"],
+                    translation_key="default_tv_seasons",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
         })
 
         if user_input is not None:
@@ -342,14 +343,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             except Exception:  # noqa: BLE001
                 errors["base"] = "invalid_json"
 
-        seasons_map = await _option_labels(
-            self.hass,
-            category="options",
-            path="step.init.data_options.default_tv_seasons",
-            values=["season1", "all"],
-        )
         schema_dict: dict[Any, Any] = {
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default=current_default): vol.In(seasons_map),
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default=current_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["season1", "all"],
+                    translation_key="default_tv_seasons",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
             vol.Required("presets_json", default=json.dumps(current_presets, indent=2) if current_presets else "[]"): str,
         }
 

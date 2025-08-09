@@ -93,5 +93,19 @@
       "name": "Request media",
       "description": "Search and request media using the selected backend. Emits events on success/failure."
     }
+  },
+  "selector": {
+    "backend": {
+      "options": {
+        "overseerr": "Overseerr",
+        "arr": "Radarr/Sonarr"
+      }
+    },
+    "default_tv_seasons": {
+      "options": {
+        "season1": "Season 1",
+        "all": "All seasons"
+      }
+    }
   }
 }

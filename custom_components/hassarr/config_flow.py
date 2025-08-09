@@ -125,22 +125,22 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 from .api_common import OverseerrClient
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(base_url, api_key, session)
-                if await client.ping():
+                try:
+                    if not await client.ping():
+                        raise RuntimeError("ping failed")
                     radarr = await client.list_radarr()
                     sonarr = await client.list_sonarr()
                     movie_profiles: dict[str, str] = {}
                     tv_profiles: dict[str, str] = {}
-                    try:
-                        default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
-                        default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
-                        if default_radarr:
-                            det_r = await client.get_radarr_details(default_radarr["id"])
-                            movie_profiles = {str(p["id"]): p["name"] for p in (det_r.get("profiles") or [])}
-                        if default_sonarr:
-                            det_s = await client.get_sonarr_details(default_sonarr["id"])
-                            tv_profiles = {str(p["id"]): p["name"] for p in (det_s.get("profiles") or [])}
-                    except Exception:  # noqa: BLE001
-                        pass
+                    # Try to get profiles from defaults or first available
+                    default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
+                    default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
+                    if default_radarr:
+                        det_r = await client.get_radarr_details(default_radarr["id"])
+                        movie_profiles = {str(p["id"]): p["name"] for p in (det_r.get("profiles") or [])}
+                    if default_sonarr:
+                        det_s = await client.get_sonarr_details(default_sonarr["id"])
+                        tv_profiles = {str(p["id"]): p["name"] for p in (det_s.get("profiles") or [])}
                     self._ovsr_ctx = {
                         "base_url": base_url,
                         "api_key": api_key,
@@ -151,7 +151,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "tv_profiles": tv_profiles,
                     }
                     return await self.async_step_ovsr_selects()
-                errors["base"] = "cannot_connect"
+                except Exception:  # noqa: BLE001
+                    errors["base"] = "cannot_connect"
 
         return self.async_show_form(step_id="ovsr_creds", data_schema=schema, errors=errors)
 
@@ -182,6 +183,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         radarr = ctx.get("radarr") or []
         sonarr = ctx.get("sonarr") or []
+        # Fallback: attempt to (re)fetch if we have no choices
+        if not radarr and not sonarr and ctx.get("base_url") and ctx.get("api_key"):
+            try:
+                from .api_common import OverseerrClient
+                session = async_get_clientsession(self.hass)
+                client = OverseerrClient(ctx["base_url"], ctx["api_key"], session)
+                if await client.ping():
+                    radarr = await client.list_radarr()
+                    sonarr = await client.list_sonarr()
+                    # Update context for consistency
+                    ctx["radarr"], ctx["sonarr"] = radarr, sonarr
+            except Exception:  # noqa: BLE001
+                pass
         server_choices: dict[str, str] = {}
         for s in radarr:
             label = f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"
@@ -193,6 +207,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # ctx holds id->name; invert to label->id
         movie_profile_choices = {name: mid for mid, name in (ctx.get("movie_profiles") or {}).items()}
         tv_profile_choices = {name: tid for tid, name in (ctx.get("tv_profiles") or {}).items()}
+        # If profiles are empty but we have a single server available, try fetching profiles for that server on the fly
+        if (not movie_profile_choices or not tv_profile_choices) and server_choices:
+            try:
+                from .api_common import OverseerrClient
+                session = async_get_clientsession(self.hass)
+                client = OverseerrClient(ctx["base_url"], ctx["api_key"], session)
+                # Heuristic: pick first radarr/sonarr entry respectively
+                if not movie_profile_choices and radarr:
+                    det_r = await client.get_radarr_details(radarr[0]["id"])
+                    movie_profile_choices = {p["name"]: str(p["id"]) for p in (det_r.get("profiles") or [])}
+                    ctx["movie_profiles"] = {str(p["id"]): p["name"] for p in (det_r.get("profiles") or [])}
+                if not tv_profile_choices and sonarr:
+                    det_s = await client.get_sonarr_details(sonarr[0]["id"])
+                    tv_profile_choices = {p["name"]: str(p["id"]) for p in (det_s.get("profiles") or [])}
+                    ctx["tv_profiles"] = {str(p["id"]): p["name"] for p in (det_s.get("profiles") or [])}
+            except Exception:  # noqa: BLE001
+                pass
 
         schema = vol.Schema({
             vol.Optional(CONF_OVERSEERR_SERVER_ID): vol.In(server_choices) if server_choices else str,

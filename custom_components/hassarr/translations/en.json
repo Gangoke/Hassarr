@@ -32,8 +32,8 @@
         "description": "Pick a default server and profiles (you can change these later in Options).",
         "data": {
           "overseerr_server_id": "Default server",
-          "overseerr_profile_id_movie": "Default movie profile",
-          "overseerr_profile_id_tv": "Default TV profile"
+          "overseerr_profile_id_movie": "Default Movie Profile",
+          "overseerr_profile_id_tv": "Default TV Profile"
         }
       },
       "arr_backend": {
@@ -43,11 +43,11 @@
           "radarr_url": "Radarr URL",
           "radarr_api_key": "Radarr API key",
           "radarr_root": "Radarr root folder",
-          "radarr_quality_profile_id": "Radarr quality profile ID",
+          "radarr_quality_profile_id": "Radarr Quality Profile ID",
           "sonarr_url": "Sonarr URL",
           "sonarr_api_key": "Sonarr API key",
           "sonarr_root": "Sonarr root folder",
-          "sonarr_quality_profile_id": "Sonarr quality profile ID",
+          "sonarr_quality_profile_id": "Sonarr Quality Profile ID",
           "sonarr_language_profile_id": "Sonarr language profile ID (optional)",
           "default_tv_seasons": "Default TV seasons"
         },

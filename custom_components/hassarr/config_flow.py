@@ -48,24 +48,10 @@ async def _option_labels(
     except Exception:  # noqa: BLE001
         trans = {}
     out: dict[str, str] = {}
-    # candidate keys in priority order
-    base_root = f"component.{DOMAIN}.{category}"
-    # try ...data.<field>.options.<value> and ...option.<value>
-    base_options = f"{base_root}.{path}.options"
-    base_option = f"{base_root}.{path}.option"
-    # try ...data_options.<field>.<value>
-    path_opts = path.replace(".data.", ".data_options.")
-    base_data_options = f"{base_root}.{path_opts}"
-    # also try ...<path>.<value> (in case caller passes data_options directly)
-    base_direct = f"{base_root}.{path}"
+    base = f"component.{DOMAIN}.{category}.{path}.option"
     for v in values:
-        label = (
-            trans.get(f"{base_options}.{v}")
-            or trans.get(f"{base_option}.{v}")
-            or trans.get(f"{base_data_options}.{v}")
-            or trans.get(f"{base_direct}.{v}")
-            or v
-        )
+        key = f"{base}.{v}"
+        label = trans.get(key, v)
         out[label] = v
     return out
 
@@ -85,7 +71,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         backend_map = await _option_labels(
             self.hass,
             category="config",
-            path="step.user.data.backend",
+            path="step.user.data_options.backend",
             values=["overseerr", "arr"],
         )
         schema = vol.Schema({
@@ -98,7 +84,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         seasons_map = await _option_labels(
             self.hass,
             category="config",
-            path="step.ovsr_creds.data.default_tv_seasons",
+            path="step.ovsr_creds.data_options.default_tv_seasons",
             values=["season1", "all"],
         )
         schema = vol.Schema({
@@ -199,7 +185,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         seasons_map = await _option_labels(
             self.hass,
             category="config",
-            path="step.arr_backend.data.default_tv_seasons",
+            path="step.arr_backend.data_options.default_tv_seasons",
             values=["season1", "all"],
         )
         schema = vol.Schema({
@@ -338,7 +324,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         seasons_map = await _option_labels(
             self.hass,
             category="options",
-            path="step.init.data.default_tv_seasons",
+            path="step.init.data_options.default_tv_seasons",
             values=["season1", "all"],
         )
         schema_dict: dict[Any, Any] = {

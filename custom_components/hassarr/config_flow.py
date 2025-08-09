@@ -39,8 +39,13 @@ async def _option_labels(
     values: list[str],
 ) -> dict[str, str]:
     """Return mapping of label->value using translations when available.
-
-    Looks up keys like: component.<domain>.<category>.<path>.option.<value>
+    
+        Tries these translation keys in order for each value:
+        1) component.<domain>.<category>.<path>.<value>
+        2) component.<domain>.<category>.<path>.option.<value>
+    
+        This supports JSON structures like:
+            { "config": { "step": { "user": { "data_options": { "backend": { "overseerr": "Overseerr" }}}}}}
     """
     lang = getattr(getattr(hass, "config", None), "language", None) or "en"
     try:
@@ -48,10 +53,14 @@ async def _option_labels(
     except Exception:  # noqa: BLE001
         trans = {}
     out: dict[str, str] = {}
-    base = f"component.{DOMAIN}.{category}.{path}.option"
+    base_primary = f"component.{DOMAIN}.{category}.{path}"
+    base_fallback = f"{base_primary}.option"
     for v in values:
-        key = f"{base}.{v}"
-        label = trans.get(key, v)
+        label = (
+            trans.get(f"{base_primary}.{v}")
+            or trans.get(f"{base_fallback}.{v}")
+            or v
+        )
         out[label] = v
     return out
 

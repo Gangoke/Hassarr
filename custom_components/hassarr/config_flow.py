@@ -200,7 +200,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:  # noqa: BLE001
                 pass
 
-        # For vol.In, use label -> value mapping so the UI shows friendly labels
+        # For vol.In in HA forms, use label -> value mapping so UI shows names
         server_choices: dict[str, str] = {}
         for s in radarr:
             label = f"Radarr: {s.get('name', 'Unnamed')} (#{s['id']})"
@@ -209,7 +209,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             label = f"Sonarr: {s.get('name', 'Unnamed')} (#{s['id']})"
             server_choices[label] = str(s["id"])  # label -> id
 
-        # ctx holds id->name; invert to label->id
+        # Invert id->name to label->value for profiles too
         movie_profile_choices: dict[str, str] = {
             name: str(mid) for mid, name in (ctx.get("movie_profiles") or {}).items()
         }
@@ -252,10 +252,36 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         def req(key: Any, default: str | None):
             return vol.Required(key, default=default) if default is not None else vol.Required(key)
 
+        # Build SelectSelector options (explicit label/value) to guarantee friendly labels in UI
+        server_options = [
+            {"label": label, "value": value} for label, value in server_choices.items()
+        ]
+        movie_profile_options = [
+            {"label": label, "value": value} for label, value in movie_profile_choices.items()
+        ]
+        tv_profile_options = [
+            {"label": label, "value": value} for label, value in tv_profile_choices.items()
+        ]
+
         schema = vol.Schema({
-            req(CONF_OVERSEERR_SERVER_ID, server_default): vol.In(server_choices),
-            req(CONF_OVERSEERR_PROFILE_ID_MOVIE, movie_default): vol.In(movie_profile_choices),
-            req(CONF_OVERSEERR_PROFILE_ID_TV, tv_default): vol.In(tv_profile_choices),
+            req(CONF_OVERSEERR_SERVER_ID, server_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=server_options,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
+            req(CONF_OVERSEERR_PROFILE_ID_MOVIE, movie_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=movie_profile_options,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
+            req(CONF_OVERSEERR_PROFILE_ID_TV, tv_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=tv_profile_options,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
         })
         return self.async_show_form(step_id="ovsr_selects", data_schema=schema, errors=errors)
 

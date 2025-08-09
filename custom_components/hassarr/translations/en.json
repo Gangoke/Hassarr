@@ -62,7 +62,7 @@
     "error": {
       "cannot_connect": "Cannot connect or invalid settings.",
   "invalid_url": "The provided URL is invalid.",
-  "overseerr_choices_missing": "Server and/or Profiles not found. Please configure you Overseerr server"
+  "overseerr_choices_missing": "Server and/or profiles not found. Please configure your Overseerr server"
     }
   },
   "options": {

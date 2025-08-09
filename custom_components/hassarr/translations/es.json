@@ -61,7 +61,8 @@
     },
     "error": {
       "cannot_connect": "No se puede conectar o configuración inválida.",
-      "invalid_url": "La URL proporcionada no es válida."
+  "invalid_url": "La URL proporcionada no es válida.",
+  "overseerr_choices_missing": "Servidor y/o perfiles no encontrados. Por favor configura tu servidor Overseerr"
     }
   },
   "options": {

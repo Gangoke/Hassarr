@@ -234,16 +234,28 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:  # noqa: BLE001
                 pass
 
+        # If we still have no choices, surface an error and do not allow continuing
+        if (not server_choices) or (not movie_profile_choices) or (not tv_profile_choices):
+            errors["base"] = "overseerr_choices_missing"
+
+        # Determine defaults (first found server and first profiles)
+        server_default: str | None = None
+        if radarr:
+            server_default = str(radarr[0]["id"])
+        elif sonarr:
+            server_default = str(sonarr[0]["id"])
+
+        movie_default: str | None = next(iter(movie_profile_choices.values()), None)
+        tv_default: str | None = next(iter(tv_profile_choices.values()), None)
+
+        # Helper to make a required key with optional default
+        def req(key: Any, default: str | None):
+            return vol.Required(key, default=default) if default is not None else vol.Required(key)
+
         schema = vol.Schema({
-            vol.Required(CONF_OVERSEERR_SERVER_ID): (
-                vol.In(server_choices) if server_choices else vol.Coerce(int)
-            ),
-            vol.Required(CONF_OVERSEERR_PROFILE_ID_MOVIE): (
-                vol.In(movie_profile_choices) if movie_profile_choices else vol.Coerce(int)
-            ),
-            vol.Required(CONF_OVERSEERR_PROFILE_ID_TV): (
-                vol.In(tv_profile_choices) if tv_profile_choices else vol.Coerce(int)
-            ),
+            req(CONF_OVERSEERR_SERVER_ID, server_default): vol.In(server_choices),
+            req(CONF_OVERSEERR_PROFILE_ID_MOVIE, movie_default): vol.In(movie_profile_choices),
+            req(CONF_OVERSEERR_PROFILE_ID_TV, tv_default): vol.In(tv_profile_choices),
         })
         return self.async_show_form(step_id="ovsr_selects", data_schema=schema, errors=errors)
 

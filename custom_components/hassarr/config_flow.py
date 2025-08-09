@@ -160,6 +160,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         ctx = getattr(self, "_ovsr_ctx", {})
         errors: Dict[str, str] = {}
 
+        # If the user submitted the form, parse and create the entry
         if user_input is not None:
             data = {
                 CONF_BACKEND: "overseerr",
@@ -168,22 +169,24 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_DEFAULT_TV_SEASONS: ctx["default_tv"],
             }
             sid = user_input.get(CONF_OVERSEERR_SERVER_ID)
-            if sid:
+            if sid is not None:
                 data[CONF_OVERSEERR_SERVER_ID] = int(sid)
             mp = user_input.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
-            if mp:
+            if mp is not None:
                 data[CONF_OVERSEERR_PROFILE_ID_MOVIE] = int(mp)
             tp = user_input.get(CONF_OVERSEERR_PROFILE_ID_TV)
-            if tp:
+            if tp is not None:
                 data[CONF_OVERSEERR_PROFILE_ID_TV] = int(tp)
-            host_id = ctx['base_url'].split('://',1)[-1].rstrip('/')
+            host_id = ctx['base_url'].split('://', 1)[-1].rstrip('/')
             await self.async_set_unique_id(f"overseerr:{host_id}")
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title="Hassarr (Overseerr)", data=data)
 
+        # Build choices for servers and profiles
         radarr = ctx.get("radarr") or []
         sonarr = ctx.get("sonarr") or []
-        # Fallback: attempt to (re)fetch if we have no choices
+
+        # Fallback: attempt to (re)fetch if we have no choices yet
         if not radarr and not sonarr and ctx.get("base_url") and ctx.get("api_key"):
             try:
                 from .api_common import OverseerrClient
@@ -196,24 +199,30 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ctx["radarr"], ctx["sonarr"] = radarr, sonarr
             except Exception:  # noqa: BLE001
                 pass
+
+        # For vol.In, use label -> value mapping so the UI shows friendly labels
         server_choices: dict[str, str] = {}
         for s in radarr:
-            label = f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"
+            label = f"Radarr: {s.get('name', 'Unnamed')} (#{s['id']})"
             server_choices[label] = str(s["id"])  # label -> id
         for s in sonarr:
-            label = f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"
+            label = f"Sonarr: {s.get('name', 'Unnamed')} (#{s['id']})"
             server_choices[label] = str(s["id"])  # label -> id
 
         # ctx holds id->name; invert to label->id
-        movie_profile_choices = {name: mid for mid, name in (ctx.get("movie_profiles") or {}).items()}
-        tv_profile_choices = {name: tid for tid, name in (ctx.get("tv_profiles") or {}).items()}
-        # If profiles are empty but we have a single server available, try fetching profiles for that server on the fly
-        if (not movie_profile_choices or not tv_profile_choices) and server_choices:
+        movie_profile_choices: dict[str, str] = {
+            name: str(mid) for mid, name in (ctx.get("movie_profiles") or {}).items()
+        }
+        tv_profile_choices: dict[str, str] = {
+            name: str(tid) for tid, name in (ctx.get("tv_profiles") or {}).items()
+        }
+
+        # If profiles are empty but we have servers, try fetching profiles for first available
+        if (not movie_profile_choices or not tv_profile_choices) and (radarr or sonarr):
             try:
                 from .api_common import OverseerrClient
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(ctx["base_url"], ctx["api_key"], session)
-                # Heuristic: pick first radarr/sonarr entry respectively
                 if not movie_profile_choices and radarr:
                     det_r = await client.get_radarr_details(radarr[0]["id"])
                     movie_profile_choices = {p["name"]: str(p["id"]) for p in (det_r.get("profiles") or [])}
@@ -226,9 +235,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 pass
 
         schema = vol.Schema({
-            vol.Optional(CONF_OVERSEERR_SERVER_ID): vol.In(server_choices) if server_choices else str,
-            vol.Optional(CONF_OVERSEERR_PROFILE_ID_MOVIE): vol.In(movie_profile_choices) if movie_profile_choices else str,
-            vol.Optional(CONF_OVERSEERR_PROFILE_ID_TV): vol.In(tv_profile_choices) if tv_profile_choices else str,
+            vol.Required(CONF_OVERSEERR_SERVER_ID): (
+                vol.In(server_choices) if server_choices else vol.Coerce(int)
+            ),
+            vol.Required(CONF_OVERSEERR_PROFILE_ID_MOVIE): (
+                vol.In(movie_profile_choices) if movie_profile_choices else vol.Coerce(int)
+            ),
+            vol.Required(CONF_OVERSEERR_PROFILE_ID_TV): (
+                vol.In(tv_profile_choices) if tv_profile_choices else vol.Coerce(int)
+            ),
         })
         return self.async_show_form(step_id="ovsr_selects", data_schema=schema, errors=errors)
 

@@ -28,7 +28,7 @@
         }
       },
       "ovsr_selects": {
-        "title": "Overseerr — Valores predeterminados (Opcional)",
+  "title": "Overseerr — Valores predeterminados",
         "description": "Elige un servidor y perfiles predeterminados (puedes cambiarlos luego en Opciones).",
         "data": {
           "overseerr_server_id": "Servidor predeterminado",

@@ -28,8 +28,8 @@
         }
       },
       "ovsr_selects": {
-        "title": "Overseerr — Defaults (Optional)",
-        "description": "Pick a default server and profiles (you can change these later in Options).",
+  "title": "Overseerr — Defaults",
+  "description": "Pick a default server and profiles (you can change these later in Options).",
         "data": {
           "overseerr_server_id": "Default server",
           "overseerr_profile_id_movie": "Default Movie Profile",

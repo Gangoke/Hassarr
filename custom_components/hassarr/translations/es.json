@@ -31,7 +31,8 @@
   "title": "Overseerr — Valores predeterminados",
         "description": "Elige un servidor y perfiles predeterminados (puedes cambiarlos luego en Opciones).",
         "data": {
-          "overseerr_server_id": "Servidor predeterminado",
+          "overseerr_radarr_server_id": "Servidor Radarr predeterminado",
+          "overseerr_sonarr_server_id": "Servidor Sonarr predeterminado",
           "overseerr_profile_id_movie": "Perfil de película predeterminado",
           "overseerr_profile_id_tv": "Perfil de TV predeterminado"
         }
@@ -73,7 +74,8 @@
         "data": {
           "default_tv_seasons": "Temporadas de TV predeterminadas",
           "presets_json": "Presets JSON",
-          "overseerr_server_id": "Servidor Overseerr",
+          "overseerr_radarr_server_id": "Servidor Radarr de Overseerr",
+          "overseerr_sonarr_server_id": "Servidor Sonarr de Overseerr",
           "overseerr_profile_id_movie": "Perfil de película Overseerr",
           "overseerr_profile_id_tv": "Perfil de TV Overseerr"
         },

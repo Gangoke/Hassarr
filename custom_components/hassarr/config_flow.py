@@ -20,7 +20,8 @@ from .const import (
     CONF_RADARR_URL, CONF_RADARR_KEY, CONF_RADARR_ROOT, CONF_RADARR_PROFILE,
     CONF_SONARR_URL, CONF_SONARR_KEY, CONF_SONARR_ROOT, CONF_SONARR_PROFILE, CONF_SONARR_LANG_PROFILE,
     CONF_PRESETS, CONF_DEFAULT_TV_SEASONS,
-    CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
+    CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_SERVER_ID_RADARR, CONF_OVERSEERR_SERVER_ID_SONARR,
+    CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -160,33 +161,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         ctx = getattr(self, "_ovsr_ctx", {})
         errors: Dict[str, str] = {}
 
-        # If the user submitted the form, parse and create the entry
-        if user_input is not None:
-            data = {
-                CONF_BACKEND: "overseerr",
-                CONF_BASE_URL: ctx["base_url"],
-                CONF_API_KEY: ctx["api_key"],
-                CONF_DEFAULT_TV_SEASONS: ctx["default_tv"],
-            }
-            sid = user_input.get(CONF_OVERSEERR_SERVER_ID)
-            if sid is not None:
-                data[CONF_OVERSEERR_SERVER_ID] = int(sid)
-            mp = user_input.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
-            if mp is not None:
-                data[CONF_OVERSEERR_PROFILE_ID_MOVIE] = int(mp)
-            tp = user_input.get(CONF_OVERSEERR_PROFILE_ID_TV)
-            if tp is not None:
-                data[CONF_OVERSEERR_PROFILE_ID_TV] = int(tp)
-            host_id = ctx['base_url'].split('://', 1)[-1].rstrip('/')
-            await self.async_set_unique_id(f"overseerr:{host_id}")
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title="Hassarr (Overseerr)", data=data)
-
-        # Build choices for servers and profiles
+        # Build choices for servers (fetch if not present)
         radarr = ctx.get("radarr") or []
         sonarr = ctx.get("sonarr") or []
-
-        # Fallback: attempt to (re)fetch if we have no choices yet
         if not radarr and not sonarr and ctx.get("base_url") and ctx.get("api_key"):
             try:
                 from .api_common import OverseerrClient
@@ -195,94 +172,127 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if await client.ping():
                     radarr = await client.list_radarr()
                     sonarr = await client.list_sonarr()
-                    # Update context for consistency
                     ctx["radarr"], ctx["sonarr"] = radarr, sonarr
             except Exception:  # noqa: BLE001
                 pass
 
-        # For vol.In in HA forms, use label -> value mapping so UI shows names
-        server_choices: dict[str, str] = {}
+        # Choices for servers
+        radarr_server_choices: dict[str, str] = {}
         for s in radarr:
-            label = f"Radarr: {s.get('name', 'Unnamed')} (#{s['id']})"
-            server_choices[label] = str(s["id"])  # label -> id
+            radarr_server_choices[f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
+        sonarr_server_choices: dict[str, str] = {}
         for s in sonarr:
-            label = f"Sonarr: {s.get('name', 'Unnamed')} (#{s['id']})"
-            server_choices[label] = str(s["id"])  # label -> id
+            sonarr_server_choices[f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
 
-        # Invert id->name to label->value for profiles too
-        movie_profile_choices: dict[str, str] = {
-            name: str(mid) for mid, name in (ctx.get("movie_profiles") or {}).items()
-        }
-        tv_profile_choices: dict[str, str] = {
-            name: str(tid) for tid, name in (ctx.get("tv_profiles") or {}).items()
-        }
+        if not radarr_server_choices and not sonarr_server_choices:
+            errors["base"] = "overseerr_choices_missing"
 
-        # If profiles are empty but we have servers, try fetching profiles for first available
-        if (not movie_profile_choices or not tv_profile_choices) and (radarr or sonarr):
+        # Determine selected server IDs (from user input or defaults) and fetch profiles for them
+        sel_radarr_id = None
+        sel_sonarr_id = None
+        try:
+            if user_input and user_input.get(CONF_OVERSEERR_SERVER_ID_RADARR) is not None:
+                sel_radarr_id = int(user_input[CONF_OVERSEERR_SERVER_ID_RADARR])
+            else:
+                sel_radarr_id = int(ctx.get("selected_radarr_id") or (radarr[0]["id"] if radarr else 0)) or None
+        except Exception:
+            sel_radarr_id = None
+        try:
+            if user_input and user_input.get(CONF_OVERSEERR_SERVER_ID_SONARR) is not None:
+                sel_sonarr_id = int(user_input[CONF_OVERSEERR_SERVER_ID_SONARR])
+            else:
+                sel_sonarr_id = int(ctx.get("selected_sonarr_id") or (sonarr[0]["id"] if sonarr else 0)) or None
+        except Exception:
+            sel_sonarr_id = None
+        if sel_radarr_id:
+            ctx["selected_radarr_id"] = sel_radarr_id
+        if sel_sonarr_id:
+            ctx["selected_sonarr_id"] = sel_sonarr_id
+
+        # Fetch profiles for the selected servers
+        movie_profile_choices: dict[str, str] = {}
+        tv_profile_choices: dict[str, str] = {}
+        if ctx.get("base_url") and ctx.get("api_key"):
             try:
                 from .api_common import OverseerrClient
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(ctx["base_url"], ctx["api_key"], session)
-                if not movie_profile_choices and radarr:
-                    det_r = await client.get_radarr_details(radarr[0]["id"])
+                if sel_radarr_id:
+                    det_r = await client.get_radarr_details(sel_radarr_id)
                     movie_profile_choices = {p["name"]: str(p["id"]) for p in (det_r.get("profiles") or [])}
-                    ctx["movie_profiles"] = {str(p["id"]): p["name"] for p in (det_r.get("profiles") or [])}
-                if not tv_profile_choices and sonarr:
-                    det_s = await client.get_sonarr_details(sonarr[0]["id"])
+                if sel_sonarr_id:
+                    det_s = await client.get_sonarr_details(sel_sonarr_id)
                     tv_profile_choices = {p["name"]: str(p["id"]) for p in (det_s.get("profiles") or [])}
-                    ctx["tv_profiles"] = {str(p["id"]): p["name"] for p in (det_s.get("profiles") or [])}
             except Exception:  # noqa: BLE001
                 pass
 
-        # If we still have no choices, surface an error and do not allow continuing
-        if (not server_choices) or (not movie_profile_choices) or (not tv_profile_choices):
-            errors["base"] = "overseerr_choices_missing"
+        if not movie_profile_choices or not tv_profile_choices:
+            errors["base"] = errors.get("base") or "overseerr_choices_missing"
 
-        # Determine defaults (first found server and first profiles)
-        server_default: str | None = None
-        if radarr:
-            server_default = str(radarr[0]["id"])
-        elif sonarr:
-            server_default = str(sonarr[0]["id"])
+        # Defaults: selected servers and first profile for each
+        radarr_server_default = str(sel_radarr_id) if sel_radarr_id else (str(radarr[0]["id"]) if radarr else None)
+        sonarr_server_default = str(sel_sonarr_id) if sel_sonarr_id else (str(sonarr[0]["id"]) if sonarr else None)
+        movie_default = (
+            (user_input.get(CONF_OVERSEERR_PROFILE_ID_MOVIE) if user_input else None)
+            or next(iter(movie_profile_choices.values()), None)
+        )
+        tv_default = (
+            (user_input.get(CONF_OVERSEERR_PROFILE_ID_TV) if user_input else None)
+            or next(iter(tv_profile_choices.values()), None)
+        )
 
-        movie_default: str | None = next(iter(movie_profile_choices.values()), None)
-        tv_default: str | None = next(iter(tv_profile_choices.values()), None)
-
-        # Helper to make a required key with optional default
+        # Helper for required keys with defaults
         def req(key: Any, default: str | None):
             return vol.Required(key, default=default) if default is not None else vol.Required(key)
 
-        # Build SelectSelector options (explicit label/value) to guarantee friendly labels in UI
-        server_options = [
-            {"label": label, "value": value} for label, value in server_choices.items()
-        ]
-        movie_profile_options = [
-            {"label": label, "value": value} for label, value in movie_profile_choices.items()
-        ]
-        tv_profile_options = [
-            {"label": label, "value": value} for label, value in tv_profile_choices.items()
-        ]
+        # Build option lists
+        radarr_server_options = [{"label": l, "value": v} for l, v in radarr_server_choices.items()]
+        sonarr_server_options = [{"label": l, "value": v} for l, v in sonarr_server_choices.items()]
+        movie_profile_options = [{"label": l, "value": v} for l, v in movie_profile_choices.items()]
+        tv_profile_options = [{"label": l, "value": v} for l, v in tv_profile_choices.items()]
 
         schema = vol.Schema({
-            req(CONF_OVERSEERR_SERVER_ID, server_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=server_options,
-                    mode=selector.SelectSelectorMode.LIST,
-                )
+            req(CONF_OVERSEERR_SERVER_ID_RADARR, radarr_server_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=radarr_server_options, mode=selector.SelectSelectorMode.LIST)
+            ),
+            req(CONF_OVERSEERR_SERVER_ID_SONARR, sonarr_server_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=sonarr_server_options, mode=selector.SelectSelectorMode.LIST)
             ),
             req(CONF_OVERSEERR_PROFILE_ID_MOVIE, movie_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=movie_profile_options,
-                    mode=selector.SelectSelectorMode.LIST,
-                )
+                selector.SelectSelectorConfig(options=movie_profile_options, mode=selector.SelectSelectorMode.LIST)
             ),
             req(CONF_OVERSEERR_PROFILE_ID_TV, tv_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=tv_profile_options,
-                    mode=selector.SelectSelectorMode.LIST,
-                )
+                selector.SelectSelectorConfig(options=tv_profile_options, mode=selector.SelectSelectorMode.LIST)
             ),
         })
+
+        # Finalize only when all four values are provided by the user (ensures profile lists reflect chosen servers)
+        if user_input is not None and all(
+            k in user_input for k in (
+                CONF_OVERSEERR_SERVER_ID_RADARR,
+                CONF_OVERSEERR_SERVER_ID_SONARR,
+                CONF_OVERSEERR_PROFILE_ID_MOVIE,
+                CONF_OVERSEERR_PROFILE_ID_TV,
+            )
+        ) and not errors:
+            data = {
+                CONF_BACKEND: "overseerr",
+                CONF_BASE_URL: ctx["base_url"],
+                CONF_API_KEY: ctx["api_key"],
+                CONF_DEFAULT_TV_SEASONS: ctx["default_tv"],
+                CONF_OVERSEERR_SERVER_ID_RADARR: int(user_input[CONF_OVERSEERR_SERVER_ID_RADARR]),
+                CONF_OVERSEERR_SERVER_ID_SONARR: int(user_input[CONF_OVERSEERR_SERVER_ID_SONARR]),
+                CONF_OVERSEERR_PROFILE_ID_MOVIE: int(user_input[CONF_OVERSEERR_PROFILE_ID_MOVIE]),
+                CONF_OVERSEERR_PROFILE_ID_TV: int(user_input[CONF_OVERSEERR_PROFILE_ID_TV]),
+            }
+            # Preserve legacy single server id if both selected servers are identical to allow fallback elsewhere
+            if data[CONF_OVERSEERR_SERVER_ID_RADARR] == data[CONF_OVERSEERR_SERVER_ID_SONARR]:
+                data[CONF_OVERSEERR_SERVER_ID] = data[CONF_OVERSEERR_SERVER_ID_RADARR]
+            host_id = ctx["base_url"].split("://", 1)[-1].rstrip('/')
+            await self.async_set_unique_id(f"overseerr:{host_id}")
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title="Hassarr (Overseerr)", data=data)
+
         return self.async_show_form(step_id="ovsr_selects", data_schema=schema, errors=errors)
 
     async def async_step_arr_backend(self, user_input: Dict[str, Any] | None = None):
@@ -367,7 +377,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             self.entry.data.get(CONF_DEFAULT_TV_SEASONS, "season1"),
         )
 
-        ovsr_server_choices: dict[str, str] = {}
+        ovsr_radarr_choices: dict[str, str] = {}
+        ovsr_sonarr_choices: dict[str, str] = {}
         ovsr_movie_profiles: dict[str, str] = {}
         ovsr_tv_profiles: dict[str, str] = {}
         if self.entry.data.get(CONF_BACKEND) == "overseerr":
@@ -379,9 +390,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     radarr = await client.list_radarr()
                     sonarr = await client.list_sonarr()
                     for s in radarr:
-                        ovsr_server_choices[f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
+                        ovsr_radarr_choices[f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
                     for s in sonarr:
-                        ovsr_server_choices[f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
+                        ovsr_sonarr_choices[f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
                     default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
                     default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
                     if default_radarr:
@@ -414,9 +425,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_DEFAULT_TV_SEASONS: user_input[CONF_DEFAULT_TV_SEASONS],
                 }
                 if self.entry.data.get(CONF_BACKEND) == "overseerr":
-                    sid = user_input.get(CONF_OVERSEERR_SERVER_ID)
-                    if sid:
-                        out[CONF_OVERSEERR_SERVER_ID] = int(sid)
+                    # New separate defaults; keep legacy if provided
+                    sid_r = user_input.get(CONF_OVERSEERR_SERVER_ID_RADARR)
+                    if sid_r:
+                        out[CONF_OVERSEERR_SERVER_ID_RADARR] = int(sid_r)
+                    sid_s = user_input.get(CONF_OVERSEERR_SERVER_ID_SONARR)
+                    if sid_s:
+                        out[CONF_OVERSEERR_SERVER_ID_SONARR] = int(sid_s)
+                    sid_legacy = user_input.get(CONF_OVERSEERR_SERVER_ID)
+                    if sid_legacy:
+                        out[CONF_OVERSEERR_SERVER_ID] = int(sid_legacy)
                     mp = user_input.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
                     if mp:
                         out[CONF_OVERSEERR_PROFILE_ID_MOVIE] = int(mp)
@@ -439,20 +457,44 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         }
 
         if self.entry.data.get(CONF_BACKEND) == "overseerr":
-            server_default = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID) else None
+            server_default_r = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID_RADARR)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID_RADARR) else None
+            server_default_s = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID_SONARR)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID_SONARR) else None
+            # Backward compat: fall back to legacy single selection
+            legacy_default = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID) else None
             movie_prof_default = str(get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_MOVIE)) if get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_MOVIE) else None
             tv_prof_default = str(get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_TV)) if get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_TV) else None
-            # invert id->name to label->id
-            ovsr_movie_choices = {name: mid for mid, name in ovsr_movie_profiles.items()}
-            ovsr_tv_choices = {name: tid for tid, name in ovsr_tv_profiles.items()}
-            schema_dict[vol.Optional(CONF_OVERSEERR_SERVER_ID, default=server_default)] = (
-                vol.In(ovsr_server_choices) if ovsr_server_choices else vol.Coerce(int)
+            # Build dropdown options for profiles: label (name) -> value (id)
+            ovsr_movie_options = [
+                {"label": name, "value": mid} for mid, name in ovsr_movie_profiles.items()
+            ]
+            ovsr_tv_options = [
+                {"label": name, "value": tid} for tid, name in ovsr_tv_profiles.items()
+            ]
+            # Radarr server dropdown
+            schema_dict[vol.Optional(CONF_OVERSEERR_SERVER_ID_RADARR, default=server_default_r or legacy_default)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": l, "value": v} for l, v in ovsr_radarr_choices.items()],
+                    mode=selector.SelectSelectorMode.LIST,
+                )
             )
-            schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_MOVIE, default=movie_prof_default)] = (
-                vol.In(ovsr_movie_choices) if ovsr_movie_choices else vol.Coerce(int)
+            # Sonarr server dropdown
+            schema_dict[vol.Optional(CONF_OVERSEERR_SERVER_ID_SONARR, default=server_default_s or legacy_default)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": l, "value": v} for l, v in ovsr_sonarr_choices.items()],
+                    mode=selector.SelectSelectorMode.LIST,
+                )
             )
-            schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_TV, default=tv_prof_default)] = (
-                vol.In(ovsr_tv_choices) if ovsr_tv_choices else vol.Coerce(int)
+            schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_MOVIE, default=movie_prof_default)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=ovsr_movie_options,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+            schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_TV, default=tv_prof_default)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=ovsr_tv_options,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
             )
 
         schema = vol.Schema(schema_dict)

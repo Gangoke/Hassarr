@@ -18,6 +18,7 @@ from .const import (
     # Overseerr
     CONF_BASE_URL, CONF_API_KEY,
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
+    CONF_OVERSEERR_SERVER_ID_RADARR, CONF_OVERSEERR_SERVER_ID_SONARR,
     CONF_OVERSEERR_SERVER_ID_OVERRIDE, CONF_OVERSEERR_PROFILE_ID_OVERRIDE,
     # ARR defaults
     CONF_RADARR_ROOT, CONF_RADARR_PROFILE,
@@ -89,7 +90,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             if backend == "overseerr":
                 client: OverseerrClient = store[STORAGE_CLIENT]
-                server_id = data.get(CONF_OVERSEERR_SERVER_ID_OVERRIDE) or entry.options.get(CONF_OVERSEERR_SERVER_ID) or entry.data.get(CONF_OVERSEERR_SERVER_ID)
+                # Choose server by media type with backward-compat fallback
+                if mt == "movie":
+                    server_id = (
+                        data.get(CONF_OVERSEERR_SERVER_ID_OVERRIDE)
+                        or entry.options.get(CONF_OVERSEERR_SERVER_ID_RADARR)
+                        or entry.data.get(CONF_OVERSEERR_SERVER_ID_RADARR)
+                        or entry.options.get(CONF_OVERSEERR_SERVER_ID)  # legacy
+                        or entry.data.get(CONF_OVERSEERR_SERVER_ID)      # legacy
+                    )
+                else:
+                    server_id = (
+                        data.get(CONF_OVERSEERR_SERVER_ID_OVERRIDE)
+                        or entry.options.get(CONF_OVERSEERR_SERVER_ID_SONARR)
+                        or entry.data.get(CONF_OVERSEERR_SERVER_ID_SONARR)
+                        or entry.options.get(CONF_OVERSEERR_SERVER_ID)  # legacy
+                        or entry.data.get(CONF_OVERSEERR_SERVER_ID)      # legacy
+                    )
                 if mt == "movie":
                     profile_id = data.get(CONF_OVERSEERR_PROFILE_ID_OVERRIDE) or entry.options.get(CONF_OVERSEERR_PROFILE_ID_MOVIE) or entry.data.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
                 else:

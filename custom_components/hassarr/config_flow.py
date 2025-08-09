@@ -48,10 +48,24 @@ async def _option_labels(
     except Exception:  # noqa: BLE001
         trans = {}
     out: dict[str, str] = {}
-    base = f"component.{DOMAIN}.{category}.{path}.option"
+    # candidate keys in priority order
+    base_root = f"component.{DOMAIN}.{category}"
+    # try ...data.<field>.options.<value> and ...option.<value>
+    base_options = f"{base_root}.{path}.options"
+    base_option = f"{base_root}.{path}.option"
+    # try ...data_options.<field>.<value>
+    path_opts = path.replace(".data.", ".data_options.")
+    base_data_options = f"{base_root}.{path_opts}"
+    # also try ...<path>.<value> (in case caller passes data_options directly)
+    base_direct = f"{base_root}.{path}"
     for v in values:
-        key = f"{base}.{v}"
-        label = trans.get(key, v)
+        label = (
+            trans.get(f"{base_options}.{v}")
+            or trans.get(f"{base_option}.{v}")
+            or trans.get(f"{base_data_options}.{v}")
+            or trans.get(f"{base_direct}.{v}")
+            or v
+        )
         out[label] = v
     return out
 

@@ -259,10 +259,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 selector.SelectSelectorConfig(options=sonarr_server_options, mode=selector.SelectSelectorMode.LIST)
             ),
             req(CONF_OVERSEERR_PROFILE_ID_MOVIE, movie_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=movie_profile_options, mode=selector.SelectSelectorMode.LIST)
+                selector.SelectSelectorConfig(options=movie_profile_options, mode=selector.SelectSelectorMode.DROPDOWN)
             ),
             req(CONF_OVERSEERR_PROFILE_ID_TV, tv_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=tv_profile_options, mode=selector.SelectSelectorMode.LIST)
+                selector.SelectSelectorConfig(options=tv_profile_options, mode=selector.SelectSelectorMode.DROPDOWN)
             ),
         })
 
@@ -487,13 +487,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_MOVIE, default=movie_prof_default)] = selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=ovsr_movie_options,
-                    mode=selector.SelectSelectorMode.LIST,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             )
             schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_TV, default=tv_prof_default)] = selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=ovsr_tv_options,
-                    mode=selector.SelectSelectorMode.LIST,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             )
 

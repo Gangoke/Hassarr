@@ -72,7 +72,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: Dict[str, str] = {}
         if user_input is not None:
             sel = user_input[CONF_BACKEND]
-            self._backend_choice = sel  # already canonical value via selector
+            # Normalize: handle either canonical value ("overseerr"/"arr") or translated label
+            if sel not in ("overseerr", "arr"):
+                try:
+                    label_to_value = await _option_labels(
+                        self.hass,
+                        category="config",
+                        path="step.user.data_options.backend",
+                        values=["overseerr", "arr"],
+                    )
+                    sel = label_to_value.get(sel, sel)
+                except Exception:  # noqa: BLE001
+                    pass
+            self._backend_choice = sel
             if self._backend_choice == "overseerr":
                 return await self.async_step_ovsr_creds()
             return await self.async_step_arr_backend()

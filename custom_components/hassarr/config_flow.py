@@ -5,6 +5,7 @@ import json
 import re
 import voluptuous as vol
 import logging
+from homeassistant.helpers.translation import async_get_translations
 
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -17,13 +18,12 @@ from .const import (
     CONF_BASE_URL, CONF_API_KEY,
     CONF_RADARR_URL, CONF_RADARR_KEY, CONF_RADARR_ROOT, CONF_RADARR_PROFILE,
     CONF_SONARR_URL, CONF_SONARR_KEY, CONF_SONARR_ROOT, CONF_SONARR_PROFILE, CONF_SONARR_LANG_PROFILE,
-    CONF_PRESETS, CONF_DEFAULT_TV_SEASONS, DEFAULT_TV_SEASONS_CHOICES,
+    CONF_PRESETS, CONF_DEFAULT_TV_SEASONS,
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
 )
 
 LOGGER = logging.getLogger(__name__)
 
-BACKEND_LABELS = ["Overseerr", "Radarr/Sonarr"]
 URL_RE = re.compile(r"^https?://", re.I)
 
 
@@ -31,8 +31,29 @@ def _valid_url(url: str) -> bool:
     return bool(URL_RE.match(url.strip()))
 
 
-def _map_backend_label(label: str) -> str:
-    return "overseerr" if label == "Overseerr" else "arr"
+async def _option_labels(
+    hass,
+    *,
+    category: str,  # "config" or "options"
+    path: str,      # e.g. "step.user.data.backend"
+    values: list[str],
+) -> dict[str, str]:
+    """Return mapping of label->value using translations when available.
+
+    Looks up keys like: component.<domain>.<category>.<path>.option.<value>
+    """
+    lang = getattr(getattr(hass, "config", None), "language", None) or "en"
+    try:
+        trans = await async_get_translations(hass, lang, category, [DOMAIN])
+    except Exception:  # noqa: BLE001
+        trans = {}
+    out: dict[str, str] = {}
+    base = f"component.{DOMAIN}.{category}.{path}.option"
+    for v in values:
+        key = f"{base}.{v}"
+        label = trans.get(key, v)
+        out[label] = v
+    return out
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -42,20 +63,34 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: Dict[str, str] = {}
         if user_input is not None:
             sel = user_input[CONF_BACKEND]
-            self._backend_choice = _map_backend_label(sel)
+            self._backend_choice = sel  # already canonical value via selector
             if self._backend_choice == "overseerr":
                 return await self.async_step_ovsr_creds()
             return await self.async_step_arr_backend()
 
-        schema = vol.Schema({vol.Required(CONF_BACKEND, default=BACKEND_LABELS[0]): vol.In(BACKEND_LABELS)})
+        backend_map = await _option_labels(
+            self.hass,
+            category="config",
+            path="step.user.data.backend",
+            values=["overseerr", "arr"],
+        )
+        schema = vol.Schema({
+            vol.Required(CONF_BACKEND, default="overseerr"): vol.In(backend_map)
+        })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     async def async_step_ovsr_creds(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
+        seasons_map = await _option_labels(
+            self.hass,
+            category="config",
+            path="step.ovsr_creds.data.default_tv_seasons",
+            values=["season1", "all"],
+        )
         schema = vol.Schema({
             vol.Required(CONF_BASE_URL): str,
             vol.Required(CONF_API_KEY): str,
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(DEFAULT_TV_SEASONS_CHOICES),
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(seasons_map),
         })
         if user_input is not None:
             base_url = user_input[CONF_BASE_URL].strip()
@@ -147,6 +182,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_arr_backend(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
         session = async_get_clientsession(self.hass)
+        seasons_map = await _option_labels(
+            self.hass,
+            category="config",
+            path="step.arr_backend.data.default_tv_seasons",
+            values=["season1", "all"],
+        )
         schema = vol.Schema({
             vol.Required(CONF_RADARR_URL): str,
             vol.Required(CONF_RADARR_KEY): str,
@@ -157,7 +198,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_SONARR_ROOT): str,
             vol.Required(CONF_SONARR_PROFILE): vol.Coerce(int),
             vol.Optional(CONF_SONARR_LANG_PROFILE): vol.Coerce(int),
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(DEFAULT_TV_SEASONS_CHOICES),
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): vol.In(seasons_map),
         })
 
         if user_input is not None:
@@ -280,8 +321,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             except Exception:  # noqa: BLE001
                 errors["base"] = "invalid_json"
 
+        seasons_map = await _option_labels(
+            self.hass,
+            category="options",
+            path="step.init.data.default_tv_seasons",
+            values=["season1", "all"],
+        )
         schema_dict: dict[Any, Any] = {
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default=current_default): vol.In(DEFAULT_TV_SEASONS_CHOICES),
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default=current_default): vol.In(seasons_map),
             vol.Required("presets_json", default=json.dumps(current_presets, indent=2) if current_presets else "[]"): str,
         }
 

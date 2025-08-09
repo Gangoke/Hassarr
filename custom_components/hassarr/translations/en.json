@@ -4,19 +4,59 @@
       "user": {
         "title": "Choose Backend",
         "description": "Use Overseerr or Sonarr/Radarr?",
-        "data": {"backend": "Backend"}
+        "data": {"backend": "Backend"},
+        "data_options": {
+          "backend": {
+            "overseerr": "Overseerr",
+            "arr": "Radarr/Sonarr"
+          }
+        }
       },
       "ovsr_creds": {
         "title": "Overseerr — Credentials",
-        "description": "Enter Overseerr URL and API key; next you'll select defaults from live data."
+        "description": "Enter Overseerr URL and API key; next you'll select defaults from live data.",
+        "data": {
+          "base_url": "Overseerr URL",
+          "api_key": "API key",
+          "default_tv_seasons": "Default TV seasons"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Season 1",
+            "all": "All seasons"
+          }
+        }
       },
       "ovsr_selects": {
         "title": "Overseerr — Defaults (Optional)",
-        "description": "Pick a default server and profiles (you can change these later in Options)."
+        "description": "Pick a default server and profiles (you can change these later in Options).",
+        "data": {
+          "overseerr_server_id": "Default server",
+          "overseerr_profile_id_movie": "Default movie profile",
+          "overseerr_profile_id_tv": "Default TV profile"
+        }
       },
       "arr_backend": {
-        "title": "ARR Settings",
-        "description": "Enter Radarr and Sonarr settings."
+        "title": "Radarr/Sonarr Settings",
+        "description": "Enter Radarr and Sonarr settings.",
+        "data": {
+          "radarr_url": "Radarr URL",
+          "radarr_api_key": "Radarr API key",
+          "radarr_root": "Radarr root folder",
+          "radarr_quality_profile_id": "Radarr quality profile ID",
+          "sonarr_url": "Sonarr URL",
+          "sonarr_api_key": "Sonarr API key",
+          "sonarr_root": "Sonarr root folder",
+          "sonarr_quality_profile_id": "Sonarr quality profile ID",
+          "sonarr_language_profile_id": "Sonarr language profile ID (optional)",
+          "default_tv_seasons": "Default TV seasons"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Season 1",
+            "all": "All seasons"
+          }
+        }
       }
     },
     "error": {
@@ -35,6 +75,12 @@
           "overseerr_server_id": "Overseerr server",
           "overseerr_profile_id_movie": "Overseerr movie profile",
           "overseerr_profile_id_tv": "Overseerr TV profile"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Season 1",
+            "all": "All seasons"
+          }
         }
       }
     },

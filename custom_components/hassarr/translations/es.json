@@ -4,19 +4,59 @@
       "user": {
         "title": "Elegir backend",
         "description": "¿Usar Overseerr o Sonarr/Radarr?",
-        "data": {"backend": "Backend"}
+        "data": {"backend": "Backend"},
+        "data_options": {
+          "backend": {
+            "overseerr": "Overseerr",
+            "arr": "Radarr/Sonarr"
+          }
+        }
       },
       "ovsr_creds": {
         "title": "Overseerr — Credenciales",
-        "description": "Introduce la URL de Overseerr y la clave API; después seleccionarás valores predeterminados obtenidos en vivo."
+        "description": "Introduce la URL de Overseerr y la clave API; después seleccionarás valores predeterminados obtenidos en vivo.",
+        "data": {
+          "base_url": "URL de Overseerr",
+          "api_key": "Clave API",
+          "default_tv_seasons": "Temporadas de TV predeterminadas"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Temporada 1",
+            "all": "Todas las temporadas"
+          }
+        }
       },
       "ovsr_selects": {
         "title": "Overseerr — Valores predeterminados (Opcional)",
-        "description": "Elige un servidor y perfiles predeterminados (puedes cambiarlos luego en Opciones)."
+        "description": "Elige un servidor y perfiles predeterminados (puedes cambiarlos luego en Opciones).",
+        "data": {
+          "overseerr_server_id": "Servidor predeterminado",
+          "overseerr_profile_id_movie": "Perfil de película predeterminado",
+          "overseerr_profile_id_tv": "Perfil de TV predeterminado"
+        }
       },
       "arr_backend": {
-        "title": "Configuración ARR",
-        "description": "Introduce la configuración de Radarr y Sonarr."
+        "title": "Configuración de Radarr/Sonarr",
+        "description": "Introduce la configuración de Radarr y Sonarr.",
+        "data": {
+          "radarr_url": "URL de Radarr",
+          "radarr_api_key": "Clave API de Radarr",
+          "radarr_root": "Carpeta raíz de Radarr",
+          "radarr_quality_profile_id": "ID de perfil de calidad de Radarr",
+          "sonarr_url": "URL de Sonarr",
+          "sonarr_api_key": "Clave API de Sonarr",
+          "sonarr_root": "Carpeta raíz de Sonarr",
+          "sonarr_quality_profile_id": "ID de perfil de calidad de Sonarr",
+          "sonarr_language_profile_id": "ID de perfil de idioma de Sonarr (opcional)",
+          "default_tv_seasons": "Temporadas de TV predeterminadas"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Temporada 1",
+            "all": "Todas las temporadas"
+          }
+        }
       }
     },
     "error": {
@@ -35,6 +75,12 @@
           "overseerr_server_id": "Servidor Overseerr",
           "overseerr_profile_id_movie": "Perfil de película Overseerr",
           "overseerr_profile_id_tv": "Perfil de TV Overseerr"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Temporada 1",
+            "all": "Todas las temporadas"
+          }
         }
       }
     },

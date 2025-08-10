@@ -23,6 +23,7 @@ from .const import (
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
     CONF_OVERSEERR_SERVER_ID_RADARR, CONF_OVERSEERR_SERVER_ID_SONARR,
     CONF_OVERSEERR_SERVER_ID_OVERRIDE, CONF_OVERSEERR_PROFILE_ID_OVERRIDE,
+    CONF_OVERSEERR_USER_ID,
     # options/defaults
     CONF_DEFAULT_TV_SEASONS,
     CONF_QUALITY_PROFILE_ID, CONF_ROOT_FOLDER_PATH,
@@ -47,6 +48,7 @@ SERVICE_REQUEST_SCHEMA = vol.Schema(
         # Overseerr overrides
         vol.Optional(CONF_OVERSEERR_SERVER_ID_OVERRIDE): cv.positive_int,
         vol.Optional(CONF_OVERSEERR_PROFILE_ID_OVERRIDE): cv.positive_int,
+    vol.Optional(CONF_OVERSEERR_USER_ID): cv.positive_int,
         # ARR-only optional overrides:
         vol.Optional(CONF_QUALITY_PROFILE_ID): cv.positive_int,
         vol.Optional(CONF_ROOT_FOLDER_PATH): cv.string,
@@ -86,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "sonarr_server_id": None,
             "movie_profile_id": None,
             "tv_profile_id": None,
+            "user_id": None,
         })
         # Seed from saved config/options so selects show defaults immediately
         ovsr_selected["radarr_server_id"] = _to_int(
@@ -107,6 +110,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ovsr_selected["tv_profile_id"] = _to_int(
             entry.options.get(CONF_OVERSEERR_PROFILE_ID_TV)
             or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
+        )
+        # Seed Overseerr user from saved config/options if present
+        ovsr_selected["user_id"] = _to_int(
+            entry.options.get(CONF_OVERSEERR_USER_ID)
+            or entry.data.get(CONF_OVERSEERR_USER_ID)
         )
         hass.data[DOMAIN][entry.entry_id] = store
         await hass.config_entries.async_forward_entry_setups(entry, [Platform.SELECT, Platform.SENSOR])
@@ -185,6 +193,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
                     )
 
+                # Selected Overseerr user to impersonate: service override > runtime entity > options/data
+                user_id = (
+                    data.get(CONF_OVERSEERR_USER_ID)
+                    or selected.get("user_id")
+                    or entry.options.get(CONF_OVERSEERR_USER_ID)
+                    or entry.data.get(CONF_OVERSEERR_USER_ID)
+                )
+
                 resp = await client.request_media(
                     query=data["query"],
                     media_type=mt,
@@ -192,6 +208,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     is_4k=data.get("is_4k", False),
                     server_id=server_id,
                     profile_id=profile_id,
+                    user_id=user_id,
                 )
                 # Emit redacted event payload to avoid leaking sensitive information
                 redacted_query = (data["query"][:200] + "…") if isinstance(data.get("query"), str) and len(data["query"]) > 200 else data.get("query")

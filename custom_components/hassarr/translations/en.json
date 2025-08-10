@@ -29,11 +29,12 @@
         }
       },
       "ovsr_select_profiles": {
-  "title": "Overseerr - Default Profile",
+        "title": "Overseerr - Default Profile",
         "description": "Profile to use when none specified.",
         "data": {
           "overseerr_profile_id_movie": "Overseerr Default Movie Profile",
-          "overseerr_profile_id_tv": "Overseerr Default TV Profile"
+          "overseerr_profile_id_tv": "Overseerr Default TV Profile",
+          "overseerr_user_id": "Overseerr Request User (optional)"
         }
       },
       "ovsr_tv_seasons": {
@@ -106,7 +107,8 @@
           "overseerr_radarr_server_id": "Overseerr Radarr server",
           "overseerr_sonarr_server_id": "Overseerr Sonarr server",
           "overseerr_profile_id_movie": "Overseerr movie profile",
-          "overseerr_profile_id_tv": "Overseerr TV profile"
+          "overseerr_profile_id_tv": "Overseerr TV profile",
+          "overseerr_user_id": "Overseerr request user"
         },
         "data_options": {
           "default_tv_seasons": {

@@ -41,6 +41,13 @@ request_media:
           min: 1
           mode: box
       description: Overseerr profile ID (Radarr for movies, Sonarr for TV).
+    overseerr_user_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+      description: Overseerr user ID to request on behalf of. If omitted, uses the current select entity.
     quality_profile_id:
       required: false
       selector:

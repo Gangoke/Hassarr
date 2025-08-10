@@ -1,11 +1,13 @@
 {
   "domain": "hassarr",
   "name": "Hassarr",
-  "version": "0.2.0",
-  "documentation": "https://github.com/TegridyTate/Hassarr",
-  "issue_tracker": "https://github.com/TegridyTate/Hassarr/issues",
-  "requirements": [],
-  "dependencies": [],
-  "codeowners": ["@TegridyTate"],
-  "config_flow": true
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/Gangoke/Hassarr",
+  "issue_tracker": "https://github.com/Gangoke/Hassarr/issues",
+  "codeowners": [
+    "@Gangoke"
+  ],
+  "iot_class": "cloud_poll",
+  "requirements": []
 }

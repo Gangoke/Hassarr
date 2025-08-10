@@ -1,6 +1,10 @@
 {
-    "name": "Hassarr",
-    "content_in_root": false,
-    "homeassistant": "2024.12.5",
-    "render_readme": true
+  "name": "Hassarr Media Requests",
+  "render_readme": true,
+  "domains": [
+    "hassarr"
+  ],
+  "country": "ALL",
+  "homeassistant": "2024.6.0",
+  "hide_default_branch": false
 }

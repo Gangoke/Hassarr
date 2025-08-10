@@ -1,91 +1,183 @@
-# Hassarr Integration
+# Hassarr Media Requests
 
-Hassarr is a custom Home Assistant integration to add movies and TV shows to Radarr, Sonarr and Overseerr.
+** **Full dislosure: Vibe-Coded with GPT5. 
+Originally forked from: TegridyTate/Hassarr, but completely wiped and built from scratch.** **
 
-## Requirements
 
-* You must have Home Assistant OS or Home Assistant Core installed (I only tested it on Home Assistant Core)
-* HACS installed on Home Assistant (instructions below for Home Assistant Core in Docker)
+Home Assistant custom integration to request Movies and TV shows via:
+- Overseerr backend (requests go to Overseerr which talks to your Arr apps)
+- Direct Arr backend (requests go straight to Radarr/Sonarr)
+
+It fetches servers/roots/profiles from your backend and exposes them as Select entities. Service calls use those entities as defaults, so you can change behavior on the fly without editing YAML.
+
+## Features
+- Two* backends: Overseerr or Direct Arr (Sonarr+Radarr) (*Jellyfin to come)
+- Auto-fetch and expose choices as Select entities:
+  - Overseerr: default Radarr/Sonarr server, default Movie/TV profiles
+  - Arr: default Radarr/Sonarr root folders, default quality profiles
+- Default TV Seasons as a Select entity (Season 1 or All)
+- “Backend in use” sensor (informational)
+- Clean device grouping per entry (entities appear under one device)
+- Single service: hassarr.request_media (uses entity selections as defaults)
+- Accepts “tmdb:<id>” in query for precision
+- Clear error messages and HA events on success/failure
 
 ## Installation
+- HACS (recommended): Add this repository as a Custom Repository, then install “Hassarr Media Requests”.
+- Manual: Copy custom_components/hassarr into your Home Assistant config/custom_components directory and restart Home Assistant.
+
+## Configuration (Add Integration)
+Pick one backend per entry. Each backend uses a 4-step guided setup.
+
+Overseerr backend:
+1) Base URL & API Key
+2) Default Server
+   - Overseerr Radarr Default Server
+   - Overseerr Sonarr Default Server
+3) Default Profile
+   - Overseerr Default Movie Profile
+   - Overseerr Default TV Profile
+4) Default TV Season
+   - Season 1 or All Seasons
+
+Arr backend (direct Sonarr/Radarr):
+1) URLs & API Keys (Radarr, Sonarr)
+2) Default Root Folders (Radarr root, Sonarr root; dropdowns)
+3) Default Profiles (Radarr quality, Sonarr quality)
+4) Default TV Season (Season 1 or All)
+
+After setup, entities are created under a device named:
+- “Hassarr (Overseerr)” or
+- “Hassarr (Sonarr/Radarr)”
+
+## Entities
+Select entities (used as service defaults):
+- Overseerr:
+  - Hassarr Radarr Server (serverId)
+  - Hassarr Sonarr Server (serverId)
+  - Hassarr Movie Profile (profileId)
+  - Hassarr TV Profile (profileId)
+- Arr:
+  - Hassarr Radarr Root (path)
+  - Hassarr Radarr Quality Profile (id)
+  - Hassarr Sonarr Root (path)
+  - Hassarr Sonarr Quality Profile (id)
+- Common:
+  - Hassarr Default TV Seasons (season1 | all)
+
+Sensor:
+- Hassarr Backend (overseerr | arr), informational only
 
 
-### Installing HACS on Home Assistant Core in Docker
-1) SSH into your server (if you have one)
-2) SSH into your homeassistant docker container
-`docker exec -it <your_container_name> bash`
-3) Run the following command to install HACS
-`wget -O - https://get.hacs.xyz | bash -`
-4) Exit from the docker container
-`exit`
-4) Restart the docker container
-`docker-compose restart <your_container_name>`
-5) Add the HACS integration by going to <your_hass_ip>:<your_hass_port>/config/integrations/dashboard on the browser
-6) Press "+ Add Integration"
-7) Look up "HACS"
-8) Read and check all the boxes and Add
+## Service: `hassarr.request_media`
 
-Now you should have the HACS button showing on the left menu, which should bring you to the HACS dashboard
+Fields (see `services.yaml`):
 
-### Install Hassarr on HACS
-1) Press the button to add this custom repo to HACS
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=TegridyTate&repository=Hassarr&category=Integration)
-2) Now look up "Hassarr" in the HACS Store search bar and download it
-3) Restart your home assistant again for Hassarr to be properly added: `docker-compose restart <your_container_name>`
-4) Add Hassarr to your Home Assistant integrations: <your_hass_ip>:<your_hass_port>/config/integrations/dashboard
-5) Press "+ Add Integration"
-6) Look up "Hassarr" and select it
-7) It should prompt you to pick either Radarr & Sonarr, or Overseerr. Pick whichever service(s) you want to use and follow the instructions.
-8a) For Radarr & Sonarr, after filling in the urls and api keys, it will prompt you with the quality profiles you want to use for each service.
-8b) For Overseerr, after filling in the urls and api keys, it will prompt you with the Overseerr user you want to use for making requests. 
+| Field | Required | Notes |
+|-------|----------|-------|
+| query | yes | Title or `tmdb:<id>` |
+| media_type | yes | `movie`, or `tv` |
+| seasons | no | TV only: `all` or list `[1,2]`; omitted = Default TV Seasons Entity |
+| is_4k | no | Overseerr backend only, untested |
+| overseerr_server_id / overseerr_profile_id | no | Override defaults (Overseerr backend), default =  Entity |
+| quality_profile_id / root_folder_path | no | Override Defaults (ARR backend), default = Entity
 
-Now Hassarr should be installed, and you can create an Automation or Intent to have sentences trigger downloads on Sonarr and Radarr.
 
-### How do I add an Automation, and what is an Automation (for noobies)?
-Good question! I'm not even sure entirely what Automations are capable of precisely, but with Hassarr you're able to map a sentence to a Hassarr action, like Add Movie or Add TV Show.
 
-You can set something up like "Add {some_title} to Radarr for me please" and this will trigger it to download your title on Radarr.
+Examples:
+````yaml
+# Minimal Overseerr movie
+service: hassarr.request_media
+data:
+  query: "Dune (2021)"
+  media_type: movie
 
-There's two ways of adding this, through the UI or directly into your automations.yaml file.
+# Minimal Arr TV (uses select entities and default seasons)
+service: hassarr.request_media
+data:
+  query: "The Bear"
+  media_type: tv
 
-#### Adding Automations in the UI
-1) In Home Assistant, go to Settings > Automations & Scenes > + Create Automation > Create New Automation
-2) + Add Trigger > Sentence, and fill in something like this `Download {title} for me on radar`. It's important to write `radar` instead of `radarr` as your speech-to-text will always transcribe the spoken word `radar` to `radar`, and not with `rr`. Add multiple sentences if you want multiple phrases to trigger it to add a movie to Radarr. Same applies to Sonarr or Overseerr.
-3) + Add Action > Type in `Hassarr` > Select `Hassarr: add_movie` > Press the three vertical dots > `Edit in YAML` > and fill in the following into the YAML editor
-    ```
-    action: hassarr.add_radarr_movie
-    metadata: {}
-    data:
-      title: "{{ trigger.slots.title }}"
-    ```
-4) Hit Save, give it a name like `Add Movie to Radarr`
-5) Repeat steps 1-4 for Sonarr (or do it for Overseerr for movies and tv shows, if you prefer)
+# Precise by TMDB id
+service: hassarr.request_media
+data:
+  query: "tmdb:1399"
+  media_type: tv
 
-Now you should be able to add a movie or TV show to Radarr and Sonarr using the sentences you setup!
+# One-off overrides (Arr)
+service: hassarr.request_media
+data:
+  query: "Alien"
+  media_type: movie
+  quality_profile_id: 7
+  root_folder_path: "/data/movies"
+````
 
-#### Adding Automations in YAML
-1) Open the `automations.yaml` in your home assistant's `config` directory, or wherever you mount your home assistant's docker container
-2) Paste in the following
-```
-- id: '1734867354703'
-  alias: Add movie using Assist
-  description: ''
-  triggers:
+## Voice Automation: `YAML`
+
+````yaml
+alias: Media Request
+mode: single
+triggers:
   - trigger: conversation
     command:
-    - (Download|Add|Send) movie {title} [on|to]  [radarr|radar]
-    - (Baixa|Adiciona|Envia)[r] [o] filme {title} [no|ao|para o|para] [radarr|radar]
-  conditions: []
-  actions:
-  - action: hassarr.add_radarr_movie
-    metadata: {}
-      data:
-        title: ""{{ trigger.slots.title }}""
-  mode: single
-```
-You can change the sentences in `command: ` to whatever sentences you like, add more etc.
-3) Save the file, and you're good to go.
-4) Make a copy of this for Sonarr (or for Overseerr, one for movies and one for tv shows, if you so prefer)
-
-Shoutout to the [repo by Github user Avraham](https://github.com/avraham/hass_radarr_sonarr_search_by_voice) for trying this some time ago, but unfortunately I had difficulties trying to get this to work.
-Make sure to check the [Template sentence syntax](https://developers.home-assistant.io/docs/voice/intent-recognition/template-sentence-syntax/) to understant how to change the activation commands.
+      - Download show {title} season {seasons}
+      - Download show {title} seasons {seasons}
+      - Download show {title}
+    id: show
+  - trigger: conversation
+    command:
+      - Download movie {title}
+    id: movie
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: movie
+        sequence:
+          - variables:
+              title_clean: >-
+                {{ (trigger.slots.title | default(trigger.sentence, true))
+                   | regex_replace('(?i)^\\s*download\\s+movie\\s+', '')
+                   | regex_replace('(?i)\\s+seasons?\\s+.*$', '')
+                   | trim }}
+          - action: hassarr.request_media
+            data:
+              media_type: movie
+              query: "{{ title_clean }}"
+      - conditions:
+          - condition: trigger
+            id: show
+        sequence:
+          - variables:
+              # Start from the slot title, fall back to the sentence
+              title_raw: "{{ trigger.slots.title | default(trigger.sentence, true) }}"
+              # Strip leading keyword and any trailing "season(s) …"
+              title_clean: >-
+                {{ title_raw
+                   | regex_replace('(?i)^\\s*download\\s+show\\s+', '')
+                   | regex_replace('(?i)\\s+seasons?\\s+(all|\\d+(?:\\s*,\\s*\\d+)*)\\s*$', '')
+                   | trim }}
+              # Prefer captured slot; else extract from the sentence
+              seasons_raw: >-
+                {% if trigger.slots.seasons is defined %}
+                  {{ trigger.slots.seasons }}
+                {% else %}
+                  {{ (trigger.sentence | regex_findall_index('(?i)\\bseasons?\\s+((?:all|\\d+(?:\\s*,\\s*\\d+)*))', 0))
+                     | default('', true) }}
+                {% endif %}
+              seasons_parsed: >-
+                {% set s = (seasons_raw | string | trim) %}
+                {% if not s %}
+                  {{ omit }}
+                {% elif s | lower == 'all' %}
+                  all
+                {% else %}
+                  [{{ (s | regex_findall('\\d+') | map('int') | list) | join(', ') }}]
+                {% endif %}
+          - action: hassarr.request_media
+            data:
+              media_type: tv
+              query: "{{ title_clean }}"
+              seasons: "{{ seasons_parsed }}"
+````

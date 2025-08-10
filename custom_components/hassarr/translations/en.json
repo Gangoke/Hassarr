@@ -1,0 +1,143 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hassarr - Choose Backend",
+        "description": "Use Overseerr or Sonarr/Radarr?",
+        "data": {"backend": "Backend"},
+        "data_options": {
+          "backend": {
+            "overseerr": "Overseerr",
+            "arr": "Radarr/Sonarr"
+          }
+        }
+      },
+      "ovsr_creds": {
+        "title": "Overseerr - URL & API Key",
+        "description": "",
+        "data": {
+          "base_url": "Overseerr URL",
+          "api_key": "Overseerr API Key"
+        }
+      },
+      "ovsr_select_servers": {
+        "title": "Overseerr - Default *arr Servers",
+        "description": "Servers to use when none specified.",
+        "data": {
+          "overseerr_radarr_server_id": "Overseerr Default Radarr Server",
+          "overseerr_sonarr_server_id": "Overseerr Default Sonarr Server"
+        }
+      },
+      "ovsr_select_profiles": {
+  "title": "Overseerr - Default Profile",
+        "description": "Profile to use when none specified.",
+        "data": {
+          "overseerr_profile_id_movie": "Overseerr Default Movie Profile",
+          "overseerr_profile_id_tv": "Overseerr Default TV Profile"
+        }
+      },
+      "ovsr_tv_seasons": {
+        "title": "Overseerr - Default TV Seasons",
+        "description": "TV seasons to download when none specified.",
+        "data": {
+          "default_tv_seasons": "Seasons"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Season 1",
+            "all": "All Seasons"
+          }
+        }
+      },
+      "arr_backend": {
+        "title": "Radarr/Sonarr — URLs & API Keys",
+        "description": "",
+        "data": {
+          "radarr_url": "Radarr URL",
+          "radarr_api_key": "Radarr API Key",
+          "sonarr_url": "Sonarr URL",
+          "sonarr_api_key": "Sonarr API Key"
+        }
+      },
+      "arr_select_roots": {
+        "title": "Radarr/Sonarr — Default Root Folders",
+        "description": "Root folders to use when none specified.",
+        "data": {
+          "radarr_root": "Radarr Default Root Folder",
+          "sonarr_root": "Sonarr Default Root Folder"
+        }
+      },
+      "arr_select_profiles": {
+        "title": "Radarr/Sonarr — Default Profiles",
+        "description": "Profiles to use when none specified.",
+        "data": {
+          "radarr_quality_profile_id": "Radarr Default Quality Profile",
+          "sonarr_quality_profile_id": "Sonarr Default Quality Profile"
+        }
+      },
+      "arr_tv_seasons": {
+        "title": "Radarr/Sonarr — Default TV Seasons",
+        "description": "TV seasons to download when none specified.",
+        "data": {
+          "default_tv_seasons": "Seasons"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Season 1",
+            "all": "All Seasons"
+          }
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect or invalid settings.",
+  "invalid_url": "The provided URL is invalid.",
+  "overseerr_choices_missing": "Server and/or profiles not found. Please configure your Overseerr server"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Media Request Options",
+        "description": "Set default TV seasons, Overseerr defaults, and manage ARR profile presets.",
+        "data": {
+          "default_tv_seasons": "Default TV seasons",
+          "presets_json": "Presets JSON",
+          "overseerr_radarr_server_id": "Overseerr Radarr server",
+          "overseerr_sonarr_server_id": "Overseerr Sonarr server",
+          "overseerr_profile_id_movie": "Overseerr movie profile",
+          "overseerr_profile_id_tv": "Overseerr TV profile"
+        },
+        "data_options": {
+          "default_tv_seasons": {
+            "season1": "Season 1",
+            "all": "All seasons"
+          }
+        }
+      }
+    },
+    "error": {
+      "invalid_json": "Invalid JSON or schema."
+    }
+  },
+  "services": {
+    "request_media": {
+      "name": "Request media",
+      "description": "Search and request media using the selected backend. Emits events on success/failure."
+    }
+  },
+  "selector": {
+    "backend": {
+      "options": {
+        "overseerr": "Overseerr",
+        "arr": "Radarr/Sonarr"
+      }
+    },
+    "default_tv_seasons": {
+      "options": {
+        "season1": "Season 1",
+        "all": "All seasons"
+      }
+    }
+  }
+}

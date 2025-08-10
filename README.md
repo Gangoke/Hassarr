@@ -79,7 +79,7 @@ Fields (see `services.yaml`):
 | media_type | yes | `movie`, or `tv` |
 | seasons | no | TV only: `all` or list `[1,2]`; omitted = Default TV Seasons Entity |
 | is_4k | no | Overseerr backend only, untested |
-| overseerr_server_id / overseerr_profile_id | no | Override defaults (Overseerr backend), default =  Entity |
+| overseerr_server_id / overseerr_profile_id / overseer_user_id | no | Override defaults (Overseerr backend), default =  Entity |
 | quality_profile_id / root_folder_path | no | Override Defaults (ARR backend), default = Entity
 
 

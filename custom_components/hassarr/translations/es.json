@@ -33,14 +33,15 @@
         "description": "Perfil a usar cuando no se especifique ninguno.",
         "data": {
           "overseerr_profile_id_movie": "Perfil de película predeterminado de Overseerr",
-          "overseerr_profile_id_tv": "Perfil de TV predeterminado de Overseerr"
+          "overseerr_profile_id_tv": "Perfil de TV predeterminado de Overseerr",
+          "overseerr_user_id": "Usuario de solicitud de Overseerr (opcional)"
         }
       },
       "ovsr_tv_seasons": {
         "title": "Overseerr - Temporada de TV predeterminada",
         "description": "Temporadas de TV a descargar cuando no se especifique.",
         "data": {
-          "default_tv_seasons": ""
+          "default_tv_seasons": "Temporadas"
         },
         "data_options": {
           "default_tv_seasons": {
@@ -79,7 +80,7 @@
         "title": "Radarr/Sonarr — Temporada de TV predeterminada",
         "description": "Temporadas de TV a descargar cuando no se especifique.",
         "data": {
-          "default_tv_seasons": ""
+          "default_tv_seasons": "Temporadas"
         },
         "data_options": {
           "default_tv_seasons": {
@@ -106,7 +107,8 @@
           "overseerr_radarr_server_id": "Servidor Radarr de Overseerr",
           "overseerr_sonarr_server_id": "Servidor Sonarr de Overseerr",
           "overseerr_profile_id_movie": "Perfil de película Overseerr",
-          "overseerr_profile_id_tv": "Perfil de TV Overseerr"
+          "overseerr_profile_id_tv": "Perfil de TV Overseerr",
+          "overseerr_user_id": "Usuario de solicitud de Overseerr"
         },
         "data_options": {
           "default_tv_seasons": {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+import re
 
 import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
@@ -22,6 +23,7 @@ from .const import (
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
     CONF_OVERSEERR_SERVER_ID_RADARR, CONF_OVERSEERR_SERVER_ID_SONARR,
     CONF_OVERSEERR_SERVER_ID_OVERRIDE, CONF_OVERSEERR_PROFILE_ID_OVERRIDE,
+    CONF_OVERSEERR_USER_ID,
     # options/defaults
     CONF_DEFAULT_TV_SEASONS,
     CONF_QUALITY_PROFILE_ID, CONF_ROOT_FOLDER_PATH,
@@ -46,6 +48,7 @@ SERVICE_REQUEST_SCHEMA = vol.Schema(
         # Overseerr overrides
         vol.Optional(CONF_OVERSEERR_SERVER_ID_OVERRIDE): cv.positive_int,
         vol.Optional(CONF_OVERSEERR_PROFILE_ID_OVERRIDE): cv.positive_int,
+    vol.Optional(CONF_OVERSEERR_USER_ID): cv.positive_int,
         # ARR-only optional overrides:
         vol.Optional(CONF_QUALITY_PROFILE_ID): cv.positive_int,
         vol.Optional(CONF_ROOT_FOLDER_PATH): cv.string,
@@ -85,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "sonarr_server_id": None,
             "movie_profile_id": None,
             "tv_profile_id": None,
+            "user_id": None,
         })
         # Seed from saved config/options so selects show defaults immediately
         ovsr_selected["radarr_server_id"] = _to_int(
@@ -106,6 +110,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ovsr_selected["tv_profile_id"] = _to_int(
             entry.options.get(CONF_OVERSEERR_PROFILE_ID_TV)
             or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
+        )
+        # Seed Overseerr user from saved config/options if present
+        ovsr_selected["user_id"] = _to_int(
+            entry.options.get(CONF_OVERSEERR_USER_ID)
+            or entry.data.get(CONF_OVERSEERR_USER_ID)
         )
         hass.data[DOMAIN][entry.entry_id] = store
         await hass.config_entries.async_forward_entry_setups(entry, [Platform.SELECT, Platform.SENSOR])
@@ -184,6 +193,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
                     )
 
+                # Selected Overseerr user to impersonate: service override > runtime entity > options/data
+                user_id = (
+                    data.get(CONF_OVERSEERR_USER_ID)
+                    or selected.get("user_id")
+                    or entry.options.get(CONF_OVERSEERR_USER_ID)
+                    or entry.data.get(CONF_OVERSEERR_USER_ID)
+                )
+
                 resp = await client.request_media(
                     query=data["query"],
                     media_type=mt,
@@ -191,13 +208,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     is_4k=data.get("is_4k", False),
                     server_id=server_id,
                     profile_id=profile_id,
+                    user_id=user_id,
                 )
+                # Emit redacted event payload to avoid leaking sensitive information
+                redacted_query = (data["query"][:200] + "…") if isinstance(data.get("query"), str) and len(data["query"]) > 200 else data.get("query")
                 _fire_event(hass, EVENT_REQUEST_COMPLETE, {
                     "backend": backend,
                     "media_type": mt,
-                    "query": data["query"],
+                    "query": redacted_query,
                     "tmdb_id": resp.get("media", {}).get("tmdbId") or resp.get("mediaId"),
-                    "response": resp,
+                    # Minimal response subset to avoid leaking sensitive data
+                    "response": _minimal_event_subset(resp, backend, mt),
                 })
             else:
                 arr_sel = hass.data[DOMAIN][entry.entry_id].get("arr_selected", {})
@@ -226,21 +247,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         quality_profile_id=int(qprof),
                         seasons=seasons_param,
                     )
+                redacted_query = (data["query"][:200] + "…") if isinstance(data.get("query"), str) and len(data["query"]) > 200 else data.get("query")
                 _fire_event(hass, EVENT_REQUEST_COMPLETE, {
                     "backend": backend,
                     "media_type": mt,
-                    "query": data["query"],
+                    "query": redacted_query,
                     "tmdb_id": tmdb_id,
-                    "response": resp,
+                    "response": _minimal_event_subset(resp, backend, mt),
                 })
             _LOGGER.info("Request processed for %s: %s", mt, data["query"])
         except (OverseerrError, ArrError) as e:
             _LOGGER.error("Request failed (%s): %s", type(e).__name__, e)
+            redacted_query = (data.get("query")[:200] + "…") if isinstance(data.get("query"), str) and len(data.get("query")) > 200 else data.get("query")
             _fire_event(hass, EVENT_REQUEST_FAILED, {
                 "backend": backend,
                 "media_type": mt,
-                "query": data["query"],
-                "error": str(e),
+                "query": redacted_query,
+                "error": _scrub_error_text(str(e)),
             })
             raise HomeAssistantError(str(e)) from e
 
@@ -251,6 +274,100 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 def _fire_event(hass: HomeAssistant, event: str, data: dict[str, Any]) -> None:
     hass.bus.async_fire(event, data)
+
+
+def _redact_event_payload(value: Any, *, _depth: int = 0) -> Any:
+    """Redact sensitive data in arbitrary structures for safe event emission.
+
+    Rules:
+    - Keys containing api, key, token, auth, password, secret, session are redacted.
+    - Long strings are truncated to 200 chars.
+    - Limits recursion to a sane depth to avoid heavy processing.
+    """
+    SENSITIVE_KEYS = ("api", "key", "token", "auth", "password", "secret", "session")
+    MAX_DEPTH = 4
+    if _depth > MAX_DEPTH:
+        return "<redacted>"
+    try:
+        if isinstance(value, dict):
+            out: dict[str, Any] = {}
+            for k, v in value.items():
+                lk = str(k).lower()
+                if any(s in lk for s in SENSITIVE_KEYS):
+                    out[str(k)] = "<redacted>"
+                else:
+                    out[str(k)] = _redact_event_payload(v, _depth=_depth + 1)
+            return out
+        if isinstance(value, list):
+            return [_redact_event_payload(v, _depth=_depth + 1) for v in value[:200]]  # cap size
+        if isinstance(value, tuple):
+            return tuple(_redact_event_payload(v, _depth=_depth + 1) for v in value[:200])
+        if isinstance(value, (int, float, type(None), bool)):
+            return value
+        s = str(value)
+        if len(s) > 200:
+            return s[:200] + "…"
+        return s
+    except Exception:  # noqa: BLE001
+        return "<redacted>"
+
+
+def _minimal_event_subset(value: Any, backend: str, media_type: str) -> dict[str, Any]:
+    """Extract a minimal, non-sensitive subset for event emission.
+
+    - For Overseerr: include id, mediaId, and status (short).
+    - For Arr: include id (created resource id) if available.
+    """
+    out: dict[str, Any] = {}
+    try:
+        if not isinstance(value, dict):
+            return out
+        # Common id fields
+        for k in ("id", "requestId", "movieId", "seriesId"):
+            v = value.get(k)
+            if isinstance(v, int):
+                out["id"] = v
+                break
+        if backend == "overseerr":
+            mid = value.get("mediaId")
+            if isinstance(mid, int):
+                out["mediaId"] = mid
+            status = value.get("status")
+            if isinstance(status, (str, int)):
+                s = str(status)
+                out["status"] = s[:50]
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+_URL_RE = re.compile(r"\bhttps?://[^\s]+", re.I)
+
+
+def _scrub_error_text(msg: str) -> str:
+    """Scrub URLs and credentials from error messages.
+
+    - Replace any http(s) URLs with host:port only.
+    - Strip userinfo if present.
+    - Truncate to a reasonable length.
+    """
+    def _replace(m: re.Match) -> str:
+        url = m.group(0)
+        # Remove scheme
+        no_scheme = url.split("://", 1)[-1]
+        # Remove path/query/fragment
+        netloc = no_scheme.split("/", 1)[0]
+        # Remove userinfo
+        netloc = netloc.split("@", 1)[-1]
+        return netloc
+
+    try:
+        cleaned = _URL_RE.sub(_replace, msg)
+        if len(cleaned) > 500:
+            cleaned = cleaned[:500] + "…"
+        return cleaned
+    except Exception:  # noqa: BLE001
+        return "<error>"
 
 
 async def _reload_on_update(hass: HomeAssistant, entry: ConfigEntry) -> None:

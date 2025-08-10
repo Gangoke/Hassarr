@@ -20,6 +20,7 @@ CONF_OVERSEERR_SERVER_ID_RADARR = "overseerr_radarr_server_id"  # int or None
 CONF_OVERSEERR_SERVER_ID_SONARR = "overseerr_sonarr_server_id"  # int or None
 CONF_OVERSEERR_PROFILE_ID_MOVIE = "overseerr_profile_id_movie"  # int or None
 CONF_OVERSEERR_PROFILE_ID_TV = "overseerr_profile_id_tv"        # int or None
+CONF_OVERSEERR_USER_ID = "overseerr_user_id"                    # int or None
 
 # Service-call overrides for Overseerr
 CONF_OVERSEERR_SERVER_ID_OVERRIDE = "overseerr_server_id"

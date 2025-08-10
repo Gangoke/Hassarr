@@ -85,6 +85,16 @@ class OverseerrClient(_BaseClient):
     async def list_sonarr(self) -> list[dict]:
         return await self._request("GET", "/api/v1/service/sonarr")
 
+    async def list_users(self) -> list[dict]:
+        """Return Overseerr users (id, email/name info)."""
+        data = await self._request("GET", "/api/v1/user")
+        # API returns {page, results, totalResults} or a list depending on version
+        if isinstance(data, dict) and "results" in data:
+            return data.get("results") or []
+        if isinstance(data, list):
+            return data
+        return []
+
     async def get_radarr_details(self, radarr_id: int) -> dict:
         return await self._request("GET", f"/api/v1/service/radarr/{radarr_id}")
 
@@ -131,6 +141,7 @@ class OverseerrClient(_BaseClient):
         is_4k: bool = False,
         server_id: Optional[int] = None,
         profile_id: Optional[int] = None,
+    user_id: Optional[int] = None,
     ) -> dict:
         media_type = self._norm_type(media_type)
         results = await self.search(query)
@@ -154,6 +165,9 @@ class OverseerrClient(_BaseClient):
             payload["serverId"] = int(server_id)
         if profile_id is not None:
             payload["profileId"] = int(profile_id)
+        if user_id is not None:
+            # Overseerr supports specifying the user requesting the media
+            payload["userId"] = int(user_id)
         if media_type == "tv":
             if isinstance(seasons, str) and seasons.strip().lower() == "all":
                 payload["seasons"] = "all"

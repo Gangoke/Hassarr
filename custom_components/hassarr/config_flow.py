@@ -7,6 +7,7 @@ import voluptuous as vol
 import logging
 from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers import selector
+from yarl import URL
 
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -22,6 +23,7 @@ from .const import (
     CONF_PRESETS, CONF_DEFAULT_TV_SEASONS,
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_SERVER_ID_RADARR, CONF_OVERSEERR_SERVER_ID_SONARR,
     CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
+    CONF_OVERSEERR_USER_ID,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -31,6 +33,33 @@ URL_RE = re.compile(r"^https?://", re.I)
 
 def _valid_url(url: str) -> bool:
     return bool(URL_RE.match(url.strip()))
+
+
+def _safe_host_id(url: str) -> str:
+    """Return a normalized host:port identifier without userinfo or path.
+
+    Ensures we never persist credentials from URLs into the config registry.
+    """
+    try:
+        u = URL(url)
+        host = u.host or ""
+        # Normalize port so http/https defaults are explicit
+        if u.port is not None:
+            port = u.port
+        else:
+            port = 443 if (u.scheme or "").lower() == "https" else 80
+        return f"{host}:{port}"
+    except Exception:  # noqa: BLE001
+        # Fallback: very conservative extraction
+        try:
+            netloc = url.split("//", 1)[-1]
+            netloc = netloc.split("/", 1)[0]
+            # Strip potential userinfo@
+            netloc = netloc.split("@", 1)[-1]
+            host_only = netloc.split("?", 1)[0]
+            return host_only
+        except Exception:  # noqa: BLE001
+            return "unknown"
 
 
 async def _option_labels(
@@ -65,6 +94,21 @@ async def _option_labels(
         )
         out[label] = v
     return out
+
+
+def _ovsr_user_label(u: dict) -> str:
+    """Pretty label for Overseerr user for dropdowns."""
+    try:
+        # Do not include email for privacy; prefer username/displayName, else fallback to id
+        name = u.get("username") or u.get("displayName")
+        if name:
+            return str(name)
+        uid = u.get("id")
+        if isinstance(uid, int):
+            return f"User #{uid}"
+        return "User"
+    except Exception:  # noqa: BLE001
+        return f"User #{u.get('id')}"
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -123,7 +167,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     if not await client.ping():
                         raise RuntimeError("ping failed")
-                    host_id = base_url.split("://", 1)[-1].rstrip('/')
+                    host_id = _safe_host_id(base_url)
                     await self.async_set_unique_id(f"overseerr:{host_id}")
                     self._abort_if_unique_id_configured()
                     # Stash and go to server/profile selection
@@ -190,6 +234,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         client = OverseerrClient(self._tmp_data[CONF_BASE_URL], self._tmp_data[CONF_API_KEY], session)
         movie_profiles: list[dict] = []
         tv_profiles: list[dict] = []
+        users: list[dict] = []
         try:
             det = await client.get_radarr_details(self._ovsr_servers["radarr"])
             movie_profiles = det.get("profiles") or []
@@ -200,6 +245,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             tv_profiles = det.get("profiles") or []
         except Exception:  # noqa: BLE001
             pass
+        try:
+            users = await client.list_users()
+        except Exception:  # noqa: BLE001
+            users = []
 
         schema = vol.Schema({
             vol.Required(CONF_OVERSEERR_PROFILE_ID_MOVIE): selector.SelectSelector(
@@ -214,6 +263,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Optional(CONF_OVERSEERR_USER_ID): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"label": _ovsr_user_label(u), "value": str(u.get("id"))}
+                        for u in users
+                        if u.get("id") is not None
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
         })
 
         if user_input is not None:
@@ -223,6 +282,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data[CONF_OVERSEERR_SERVER_ID_SONARR] = self._ovsr_servers["sonarr"]
             data[CONF_OVERSEERR_PROFILE_ID_MOVIE] = int(user_input[CONF_OVERSEERR_PROFILE_ID_MOVIE])
             data[CONF_OVERSEERR_PROFILE_ID_TV] = int(user_input[CONF_OVERSEERR_PROFILE_ID_TV])
+            if user_input.get(CONF_OVERSEERR_USER_ID):
+                try:
+                    data[CONF_OVERSEERR_USER_ID] = int(user_input[CONF_OVERSEERR_USER_ID])
+                except Exception:  # noqa: BLE001
+                    pass
             self._tmp_data = data
             return await self.async_step_ovsr_tv_seasons()
 
@@ -273,7 +337,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 rc = RadarrClient(radarr_url, radarr_key, session)
                 sc = SonarrClient(sonarr_url, sonarr_key, session)
                 if await rc.ping() and await sc.ping():
-                    host_id = f"{radarr_url.split('://',1)[-1]}|{sonarr_url.split('://',1)[-1]}".rstrip('/')
+                    host_id = f"{_safe_host_id(radarr_url)}|{_safe_host_id(sonarr_url)}"
                     await self.async_set_unique_id(f"arr:{host_id}")
                     self._abort_if_unique_id_configured()
                     self._tmp_data = {
@@ -402,7 +466,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self.entry = entry
 
-    async def async_step_init(self, user_input=None) -> FlowResult:
+    async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         errors: Dict[str, str] = {}
 
         current_presets = self.entry.options.get(CONF_PRESETS, [])
@@ -411,38 +475,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             self.entry.data.get(CONF_DEFAULT_TV_SEASONS, "season1"),
         )
 
-        ovsr_radarr_choices: dict[str, str] = {}
-        ovsr_sonarr_choices: dict[str, str] = {}
-        ovsr_movie_profiles: dict[str, str] = {}
-        ovsr_tv_profiles: dict[str, str] = {}
+        ovsr_user_options: dict[str, str] = {}
         if self.entry.data.get(CONF_BACKEND) == "overseerr":
             try:
                 from .api_common import OverseerrClient
                 session = async_get_clientsession(self.hass)
                 client = OverseerrClient(self.entry.data[CONF_BASE_URL], self.entry.data[CONF_API_KEY], session)
                 if await client.ping():
-                    radarr = await client.list_radarr()
-                    sonarr = await client.list_sonarr()
-                    for s in radarr:
-                        ovsr_radarr_choices[f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
-                    for s in sonarr:
-                        ovsr_sonarr_choices[f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
-                    default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
-                    default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
-                    if default_radarr:
-                        det = await client.get_radarr_details(default_radarr["id"])
-                        ovsr_movie_profiles = {str(p["id"]): p["name"] for p in (det.get("profiles") or [])}
-                    if default_sonarr:
-                        det = await client.get_sonarr_details(default_sonarr["id"])
-                        ovsr_tv_profiles = {str(p["id"]): p["name"] for p in (det.get("profiles") or [])}
+                    users = await client.list_users()
+                    ovsr_user_options = {str(u.get("id")): _ovsr_user_label(u) for u in (users or []) if u.get("id") is not None}
             except Exception:  # noqa: BLE001
-                pass
-
-        def get_opt_or_data(key):
-            return self.entry.options.get(key, self.entry.data.get(key))
+                ovsr_user_options = {}
 
         if user_input is not None:
-            text = user_input["presets_json"]
+            text = user_input.get("presets_json", "[]")
             try:
                 data = json.loads(text)
                 if not isinstance(data, list):
@@ -459,22 +505,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_DEFAULT_TV_SEASONS: user_input[CONF_DEFAULT_TV_SEASONS],
                 }
                 if self.entry.data.get(CONF_BACKEND) == "overseerr":
-                    # Selections are primarily managed via Select entities, but allow options to be set here too.
-                    sid_r = user_input.get(CONF_OVERSEERR_SERVER_ID_RADARR)
-                    if sid_r:
-                        out[CONF_OVERSEERR_SERVER_ID_RADARR] = int(sid_r)
-                    sid_s = user_input.get(CONF_OVERSEERR_SERVER_ID_SONARR)
-                    if sid_s:
-                        out[CONF_OVERSEERR_SERVER_ID_SONARR] = int(sid_s)
-                    sid_legacy = user_input.get(CONF_OVERSEERR_SERVER_ID)
-                    if sid_legacy:
-                        out[CONF_OVERSEERR_SERVER_ID] = int(sid_legacy)
-                    mp = user_input.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
-                    if mp:
-                        out[CONF_OVERSEERR_PROFILE_ID_MOVIE] = int(mp)
-                    tp = user_input.get(CONF_OVERSEERR_PROFILE_ID_TV)
-                    if tp:
-                        out[CONF_OVERSEERR_PROFILE_ID_TV] = int(tp)
+                    uid = user_input.get(CONF_OVERSEERR_USER_ID)
+                    if uid:
+                        out[CONF_OVERSEERR_USER_ID] = int(uid)
                 return self.async_create_entry(title="Options", data=out)
             except Exception:  # noqa: BLE001
                 errors["base"] = "invalid_json"
@@ -490,43 +523,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required("presets_json", default=json.dumps(current_presets, indent=2) if current_presets else "[]"): str,
         }
 
-        if self.entry.data.get(CONF_BACKEND) == "overseerr":
-            server_default_r = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID_RADARR)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID_RADARR) else None
-            server_default_s = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID_SONARR)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID_SONARR) else None
-            # Backward compat: fall back to legacy single selection
-            legacy_default = str(get_opt_or_data(CONF_OVERSEERR_SERVER_ID)) if get_opt_or_data(CONF_OVERSEERR_SERVER_ID) else None
-            movie_prof_default = str(get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_MOVIE)) if get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_MOVIE) else None
-            tv_prof_default = str(get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_TV)) if get_opt_or_data(CONF_OVERSEERR_PROFILE_ID_TV) else None
-            # Build dropdown options for profiles: label (name) -> value (id)
-            ovsr_movie_options = [
-                {"label": name, "value": mid} for mid, name in ovsr_movie_profiles.items()
-            ]
-            ovsr_tv_options = [
-                {"label": name, "value": tid} for tid, name in ovsr_tv_profiles.items()
-            ]
-            # Radarr server dropdown
-            schema_dict[vol.Optional(CONF_OVERSEERR_SERVER_ID_RADARR, default=server_default_r or legacy_default)] = selector.SelectSelector(
+        if self.entry.data.get(CONF_BACKEND) == "overseerr" and ovsr_user_options:
+            default_uid = self.entry.options.get(CONF_OVERSEERR_USER_ID) or self.entry.data.get(CONF_OVERSEERR_USER_ID)
+            default_uid_str = str(default_uid) if default_uid is not None else ""
+            schema_dict[vol.Optional(CONF_OVERSEERR_USER_ID, default=default_uid_str)] = selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=[{"label": l, "value": v} for l, v in ovsr_radarr_choices.items()],
-                    mode=selector.SelectSelectorMode.LIST,
-                )
-            )
-            # Sonarr server dropdown
-            schema_dict[vol.Optional(CONF_OVERSEERR_SERVER_ID_SONARR, default=server_default_s or legacy_default)] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[{"label": l, "value": v} for l, v in ovsr_sonarr_choices.items()],
-                    mode=selector.SelectSelectorMode.LIST,
-                )
-            )
-            schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_MOVIE, default=movie_prof_default)] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=ovsr_movie_options,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            )
-            schema_dict[vol.Optional(CONF_OVERSEERR_PROFILE_ID_TV, default=tv_prof_default)] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=ovsr_tv_options,
+                    options=[{"label": label, "value": uid} for uid, label in ovsr_user_options.items()],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             )

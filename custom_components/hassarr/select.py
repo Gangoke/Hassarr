@@ -17,6 +17,7 @@ from .const import (
     CONF_OVERSEERR_SERVER_ID_SONARR,
     CONF_OVERSEERR_PROFILE_ID_MOVIE,
     CONF_OVERSEERR_PROFILE_ID_TV,
+    CONF_OVERSEERR_USER_ID,
 )
 from .api_common import OverseerrClient
 
@@ -294,6 +295,61 @@ class TvProfileSelect(BaseOvsrSelect):
 
     async def _handle_selection_changed(self) -> None:
         self.selected["tv_profile_id"] = self._current_id
+
+
+class OverseerrUserSelect(BaseOvsrSelect):
+    key = "overseerr_user"
+
+    @property
+    def name(self) -> str:
+        return "Hassarr Overseerr User"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self.entry.entry_id}-overseerr-user"
+
+    @property
+    def icon(self) -> str:
+        return "mdi:account"
+
+    def _user_label(self, u: dict) -> str:
+        try:
+            # Privacy: do not display email. Prefer username/displayName, else id.
+            name = u.get("username") or u.get("displayName")
+            if name:
+                return str(name)
+            uid = u.get("id")
+            if isinstance(uid, int):
+                return f"User #{uid}"
+            return "User"
+        except Exception:  # noqa: BLE001
+            return f"User #{u.get('id')}"
+
+    async def _refresh(self) -> None:
+        users = []
+        try:
+            users = await self.client.list_users()
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.debug("Failed to list Overseerr users: %s", e)
+        labels: dict[str, Optional[int]] = {"- Not set -": None}
+        for u in users or []:
+            uid = u.get("id")
+            if uid is None:
+                continue
+            labels[self._user_label(u)] = int(uid)
+        self._label_to_value = labels
+
+        cur = (
+            self.selected.get("user_id")
+            or self.entry.options.get(CONF_OVERSEERR_USER_ID)
+            or self.entry.data.get(CONF_OVERSEERR_USER_ID)
+        )
+        if cur is not None:
+            self._current_id = int(cur)
+        self.selected["user_id"] = self._current_id
+
+    async def _handle_selection_changed(self) -> None:
+        self.selected["user_id"] = self._current_id
 
 
 class ArrBaseSelect(SelectEntity):
@@ -591,8 +647,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     sonarr_server = SonarrServerSelect(hass, entry, client, selected, registry)
     movie_profile = MovieProfileSelect(hass, entry, client, selected, registry)
     tv_profile = TvProfileSelect(hass, entry, client, selected, registry)
+    user_select = OverseerrUserSelect(hass, entry, client, selected, registry)
     registry[radarr_server.key] = radarr_server
     registry[sonarr_server.key] = sonarr_server
     registry[movie_profile.key] = movie_profile
     registry[tv_profile.key] = tv_profile
-    async_add_entities([radarr_server, sonarr_server, movie_profile, tv_profile, DefaultTvSeasonsSelect(hass, entry)], True)
+    registry[user_select.key] = user_select
+    async_add_entities([radarr_server, sonarr_server, movie_profile, tv_profile, user_select, DefaultTvSeasonsSelect(hass, entry)], True)

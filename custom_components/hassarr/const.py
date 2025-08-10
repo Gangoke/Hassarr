@@ -35,7 +35,6 @@ CONF_SONARR_URL = "sonarr_url"
 CONF_SONARR_KEY = "sonarr_api_key"
 CONF_SONARR_ROOT = "sonarr_root"
 CONF_SONARR_PROFILE = "sonarr_quality_profile_id"
-CONF_SONARR_LANG_PROFILE = "sonarr_language_profile_id"
 
 # Options: multiple presets and default seasons
 CONF_PRESETS = "presets"  # list[dict], see README for schema
@@ -45,7 +44,6 @@ DEFAULT_TV_SEASONS_CHOICES = ["season1", "all"]
 # Service-time overrides / selectors (ARR backend)
 CONF_PROFILE_PRESET = "profile_preset"
 CONF_QUALITY_PROFILE_ID = "quality_profile_id"      # movie or tv
-CONF_LANGUAGE_PROFILE_ID = "language_profile_id"    # tv only
 CONF_ROOT_FOLDER_PATH = "root_folder_path"
 
 # Runtime storage

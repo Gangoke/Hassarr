@@ -9,6 +9,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.const import Platform
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     DOMAIN,
@@ -20,12 +22,12 @@ from .const import (
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
     CONF_OVERSEERR_SERVER_ID_RADARR, CONF_OVERSEERR_SERVER_ID_SONARR,
     CONF_OVERSEERR_SERVER_ID_OVERRIDE, CONF_OVERSEERR_PROFILE_ID_OVERRIDE,
-    # ARR defaults
-    CONF_RADARR_ROOT, CONF_RADARR_PROFILE,
-    CONF_SONARR_ROOT, CONF_SONARR_PROFILE, CONF_SONARR_LANG_PROFILE,
-    # options/presets
-    CONF_PRESETS, CONF_DEFAULT_TV_SEASONS,
-    CONF_PROFILE_PRESET, CONF_QUALITY_PROFILE_ID, CONF_LANGUAGE_PROFILE_ID, CONF_ROOT_FOLDER_PATH,
+    # options/defaults
+    CONF_DEFAULT_TV_SEASONS,
+    CONF_QUALITY_PROFILE_ID, CONF_ROOT_FOLDER_PATH,
+    # ARR config keys
+    CONF_RADARR_URL, CONF_RADARR_KEY, CONF_RADARR_ROOT, CONF_RADARR_PROFILE,
+    CONF_SONARR_URL, CONF_SONARR_KEY, CONF_SONARR_ROOT, CONF_SONARR_PROFILE,
     STORAGE_BACKEND, STORAGE_CLIENT,
 )
 from .api_common import OverseerrClient, OverseerrError, RadarrClient, SonarrClient, ArrError
@@ -33,7 +35,7 @@ from .api_common import OverseerrClient, OverseerrError, RadarrClient, SonarrCli
 _LOGGER = logging.getLogger(__name__)
 
 # More strict seasons validation: list of positive ints OR the string "all"
-SEASONS_SCHEMA = vol.Any("all", [cv.positive_int])
+SEASONS_SCHEMA = vol.Any("all", [cv.positive_int], cv.string)
 
 SERVICE_REQUEST_SCHEMA = vol.Schema(
     {
@@ -45,9 +47,7 @@ SERVICE_REQUEST_SCHEMA = vol.Schema(
         vol.Optional(CONF_OVERSEERR_SERVER_ID_OVERRIDE): cv.positive_int,
         vol.Optional(CONF_OVERSEERR_PROFILE_ID_OVERRIDE): cv.positive_int,
         # ARR-only optional overrides:
-        vol.Optional(CONF_PROFILE_PRESET): cv.string,
         vol.Optional(CONF_QUALITY_PROFILE_ID): cv.positive_int,
-        vol.Optional(CONF_LANGUAGE_PROFILE_ID): cv.positive_int,
         vol.Optional(CONF_ROOT_FOLDER_PATH): cv.string,
     }
 )
@@ -64,53 +64,125 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     store: dict[str, Any] = {STORAGE_BACKEND: backend}
 
+    def _to_int(v: Any) -> int | None:
+        try:
+            return int(v) if v is not None else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    # Seed default TV seasons runtime mode for service behavior
+    try:
+        store["default_tv_seasons_mode"] = entry.options.get(CONF_DEFAULT_TV_SEASONS) or entry.data.get(CONF_DEFAULT_TV_SEASONS, "season1")
+    except Exception:  # noqa: BLE001
+        store["default_tv_seasons_mode"] = "season1"
+
     if backend == "overseerr":
         client = OverseerrClient(entry.data[CONF_BASE_URL], entry.data[CONF_API_KEY], session)
         store[STORAGE_CLIENT] = client
+        # Runtime selections managed by select entities
+        ovsr_selected = store.setdefault("ovsr_selected", {
+            "radarr_server_id": None,
+            "sonarr_server_id": None,
+            "movie_profile_id": None,
+            "tv_profile_id": None,
+        })
+        # Seed from saved config/options so selects show defaults immediately
+        ovsr_selected["radarr_server_id"] = _to_int(
+            entry.options.get(CONF_OVERSEERR_SERVER_ID_RADARR)
+            or entry.data.get(CONF_OVERSEERR_SERVER_ID_RADARR)
+            or entry.options.get(CONF_OVERSEERR_SERVER_ID)  # legacy single
+            or entry.data.get(CONF_OVERSEERR_SERVER_ID)
+        )
+        ovsr_selected["sonarr_server_id"] = _to_int(
+            entry.options.get(CONF_OVERSEERR_SERVER_ID_SONARR)
+            or entry.data.get(CONF_OVERSEERR_SERVER_ID_SONARR)
+            or entry.options.get(CONF_OVERSEERR_SERVER_ID)  # legacy single
+            or entry.data.get(CONF_OVERSEERR_SERVER_ID)
+        )
+        ovsr_selected["movie_profile_id"] = _to_int(
+            entry.options.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
+            or entry.data.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
+        )
+        ovsr_selected["tv_profile_id"] = _to_int(
+            entry.options.get(CONF_OVERSEERR_PROFILE_ID_TV)
+            or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
+        )
+        hass.data[DOMAIN][entry.entry_id] = store
+        await hass.config_entries.async_forward_entry_setups(entry, [Platform.SELECT, Platform.SENSOR])
     else:
-        radarr = RadarrClient(entry.data["radarr_url"], entry.data["radarr_api_key"], session)
-        sonarr = SonarrClient(entry.data["sonarr_url"], entry.data["sonarr_api_key"], session)
+        radarr = RadarrClient(entry.data[CONF_RADARR_URL], entry.data[CONF_RADARR_KEY], session)
+        sonarr = SonarrClient(entry.data[CONF_SONARR_URL], entry.data[CONF_SONARR_KEY], session)
         store["radarr"] = radarr
         store["sonarr"] = sonarr
-        store["radarr_root"] = entry.data[CONF_RADARR_ROOT]
-        store["radarr_profile"] = int(entry.data[CONF_RADARR_PROFILE])
-        store["sonarr_root"] = entry.data[CONF_SONARR_ROOT]
-        store["sonarr_profile"] = int(entry.data[CONF_SONARR_PROFILE])
-        store["sonarr_lang"] = entry.data.get(CONF_SONARR_LANG_PROFILE)
-
-    hass.data[DOMAIN][entry.entry_id] = store
+        # Runtime selections for ARR, to be controlled by select entities
+        arr_selected = store.setdefault("arr_selected", {
+            "radarr_root": None,
+            "radarr_quality_profile_id": None,
+            "sonarr_root": None,
+            "sonarr_quality_profile_id": None,
+        })
+        # Seed from saved config/options
+        arr_selected["radarr_root"] = entry.options.get(CONF_RADARR_ROOT) or entry.data.get(CONF_RADARR_ROOT)
+        arr_selected["radarr_quality_profile_id"] = _to_int(
+            entry.options.get(CONF_RADARR_PROFILE) or entry.data.get(CONF_RADARR_PROFILE)
+        )
+        arr_selected["sonarr_root"] = entry.options.get(CONF_SONARR_ROOT) or entry.data.get(CONF_SONARR_ROOT)
+        arr_selected["sonarr_quality_profile_id"] = _to_int(
+            entry.options.get(CONF_SONARR_PROFILE) or entry.data.get(CONF_SONARR_PROFILE)
+        )
+        hass.data[DOMAIN][entry.entry_id] = store
+        await hass.config_entries.async_forward_entry_setups(entry, [Platform.SELECT, Platform.SENSOR])
 
     async def _svc_request(call: ServiceCall) -> None:
-        data = SERVICE_REQUEST_SCHEMA(call.data)
+        # Validate against a plain dict copy to avoid mutating Home Assistant's ReadOnlyDict
+        data = SERVICE_REQUEST_SCHEMA(dict(call.data))
         media_type = data["media_type"].lower()
         mt = "tv" if media_type == "show" else media_type
 
+        # Prefer runtime Default TV Seasons entity when user doesn't provide seasons
         seasons_param = _resolve_seasons_default(entry, mt, data.get("seasons"))
+        if mt == "tv" and data.get("seasons") is None:
+            mode = hass.data[DOMAIN][entry.entry_id].get("default_tv_seasons_mode")
+            if mode == "season1":
+                seasons_param = [1]
+            elif mode == "all":
+                seasons_param = "all"
 
         try:
             if backend == "overseerr":
-                client: OverseerrClient = store[STORAGE_CLIENT]
+                client: OverseerrClient = hass.data[DOMAIN][entry.entry_id][STORAGE_CLIENT]
+                selected = hass.data[DOMAIN][entry.entry_id].get("ovsr_selected", {})
                 # Choose server by media type with backward-compat fallback
                 if mt == "movie":
                     server_id = (
                         data.get(CONF_OVERSEERR_SERVER_ID_OVERRIDE)
+                        or selected.get("radarr_server_id")
                         or entry.options.get(CONF_OVERSEERR_SERVER_ID_RADARR)
                         or entry.data.get(CONF_OVERSEERR_SERVER_ID_RADARR)
                         or entry.options.get(CONF_OVERSEERR_SERVER_ID)  # legacy
                         or entry.data.get(CONF_OVERSEERR_SERVER_ID)      # legacy
                     )
+                    profile_id = (
+                        data.get(CONF_OVERSEERR_PROFILE_ID_OVERRIDE)
+                        or selected.get("movie_profile_id")
+                        or entry.options.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
+                        or entry.data.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
+                    )
                 else:
                     server_id = (
                         data.get(CONF_OVERSEERR_SERVER_ID_OVERRIDE)
+                        or selected.get("sonarr_server_id")
                         or entry.options.get(CONF_OVERSEERR_SERVER_ID_SONARR)
                         or entry.data.get(CONF_OVERSEERR_SERVER_ID_SONARR)
                         or entry.options.get(CONF_OVERSEERR_SERVER_ID)  # legacy
                         or entry.data.get(CONF_OVERSEERR_SERVER_ID)      # legacy
                     )
-                if mt == "movie":
-                    profile_id = data.get(CONF_OVERSEERR_PROFILE_ID_OVERRIDE) or entry.options.get(CONF_OVERSEERR_PROFILE_ID_MOVIE) or entry.data.get(CONF_OVERSEERR_PROFILE_ID_MOVIE)
-                else:
-                    profile_id = data.get(CONF_OVERSEERR_PROFILE_ID_OVERRIDE) or entry.options.get(CONF_OVERSEERR_PROFILE_ID_TV) or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
+                    profile_id = (
+                        data.get(CONF_OVERSEERR_PROFILE_ID_OVERRIDE)
+                        or selected.get("tv_profile_id")
+                        or entry.options.get(CONF_OVERSEERR_PROFILE_ID_TV)
+                        or entry.data.get(CONF_OVERSEERR_PROFILE_ID_TV)
+                    )
 
                 resp = await client.request_media(
                     query=data["query"],
@@ -128,24 +200,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "response": resp,
                 })
             else:
+                arr_sel = hass.data[DOMAIN][entry.entry_id].get("arr_selected", {})
                 if mt == "movie":
-                    sel = _resolve_preset(entry, mt, data)
                     radarr: RadarrClient = store["radarr"]
                     tmdb_id = await _ensure_tmdb_id_for_movie(radarr, data["query"])
+                    root = data.get("root_folder_path") or arr_sel.get("radarr_root")
+                    qprof = data.get("quality_profile_id") or arr_sel.get("radarr_quality_profile_id")
+                    if not root or not qprof:
+                        raise ArrError("Radarr root and quality profile must be selected via entities or provided in call")
                     resp = await radarr.add_movie(
                         tmdb_id=tmdb_id,
-                        root=sel["root"],
-                        profile_id=sel["quality_profile_id"],
+                        root=str(root),
+                        profile_id=int(qprof),
                     )
                 else:
-                    sel = _resolve_preset(entry, mt, data)
                     sonarr: SonarrClient = store["sonarr"]
                     tmdb_id = await _ensure_tmdb_id_for_series(sonarr, data["query"])
+                    root = data.get("root_folder_path") or arr_sel.get("sonarr_root")
+                    qprof = data.get("quality_profile_id") or arr_sel.get("sonarr_quality_profile_id")
+                    if not root or not qprof:
+                        raise ArrError("Sonarr root and quality profile must be selected via entities or provided in call")
                     resp = await sonarr.add_series(
                         tmdb_id=tmdb_id,
-                        root=sel["root"],
-                        quality_profile_id=sel["quality_profile_id"],
-                        language_profile_id=sel.get("language_profile_id"),
+                        root=str(root),
+                        quality_profile_id=int(qprof),
                         seasons=seasons_param,
                     )
                 _fire_event(hass, EVENT_REQUEST_COMPLETE, {
@@ -164,7 +242,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "query": data["query"],
                 "error": str(e),
             })
-            raise
+            raise HomeAssistantError(str(e)) from e
 
     hass.services.async_register(DOMAIN, SERVICE_REQUEST_MEDIA, _svc_request)
     entry.async_on_unload(entry.add_update_listener(_reload_on_update))
@@ -180,10 +258,11 @@ async def _reload_on_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, [Platform.SELECT, Platform.SENSOR])
     hass.data[DOMAIN].pop(entry.entry_id, None)
     if not hass.data[DOMAIN]:
         hass.services.async_remove(DOMAIN, SERVICE_REQUEST_MEDIA)
-    return True
+    return unload_ok
 
 
 def _resolve_seasons_default(entry: ConfigEntry, media_type: str, seasons_value: Any) -> list[int] | str | None:
@@ -192,47 +271,41 @@ def _resolve_seasons_default(entry: ConfigEntry, media_type: str, seasons_value:
     if mt != "tv":
         return None
     if seasons_value is not None:
-        return seasons_value
+        parsed = _parse_seasons(seasons_value)
+        return parsed
     default_mode = entry.options.get(CONF_DEFAULT_TV_SEASONS) or entry.data.get(CONF_DEFAULT_TV_SEASONS, "season1")
     return [1] if default_mode == "season1" else "all"
 
 
-def _resolve_preset(entry: ConfigEntry, media_type: str, call_data: dict) -> dict:
-    from .const import (
-        CONF_PRESETS, CONF_PROFILE_PRESET, CONF_ROOT_FOLDER_PATH,
-        CONF_QUALITY_PROFILE_ID, CONF_LANGUAGE_PROFILE_ID,
-    )
-    mt = "tv" if media_type == "show" else media_type
-    opts = entry.options or {}
-    presets = opts.get(CONF_PRESETS, [])
-    by_name = {p.get("name"): p for p in presets if isinstance(p, dict) and p.get("name")}
+def _parse_seasons(seasons_value: Any) -> list[int] | str:
+    """Parse seasons from UI input.
 
-    chosen = by_name.get(call_data.get(CONF_PROFILE_PRESET)) if call_data.get(CONF_PROFILE_PRESET) else None
-    chosen_app = (chosen or {}).get("sonarr" if mt == "tv" else "radarr", {})
+    Accepts:
+    - "all" (case-insensitive)
+    - list[int]
+    - string like "[1,2,5]" or "1,2,5" or "1"
+    Returns list of ints or "all".
+    """
+    if isinstance(seasons_value, str):
+        s = seasons_value.strip().lower()
+        if s == "all":
+            return "all"
+        try:
+            # Try JSON first
+            import json as _json
 
-    resolved = {
-        "root": call_data.get(CONF_ROOT_FOLDER_PATH)
-                 or chosen_app.get("root")
-                 or (entry.data["sonarr_root"] if mt == "tv" else entry.data["radarr_root"]),
-        "quality_profile_id": int(
-            call_data.get(CONF_QUALITY_PROFILE_ID)
-            or chosen_app.get("quality_profile_id")
-            or (entry.data["sonarr_quality_profile_id"] if mt == "tv" else entry.data["radarr_quality_profile_id"])
-        ),
-    }
-
-    if mt == "tv":
-        lang_override = call_data.get(CONF_LANGUAGE_PROFILE_ID)
-        lang_from_preset = chosen_app.get("language_profile_id")
-        lang_default = entry.data.get("sonarr_language_profile_id")
-        if lang_override is not None:
-            resolved["language_profile_id"] = int(lang_override)
-        elif lang_from_preset is not None:
-            resolved["language_profile_id"] = int(lang_from_preset)
-        elif lang_default is not None:
-            resolved["language_profile_id"] = int(lang_default)
-
-    return resolved
+            val = _json.loads(seasons_value)
+            if isinstance(val, list):
+                return [int(x) for x in val]
+            return [int(val)]
+        except Exception:  # noqa: BLE001
+            # Fallback simple csv
+            parts = [p.strip() for p in seasons_value.replace("[", "").replace("]", "").split(",") if p.strip()]
+            return [int(p) for p in parts] if parts else [1]
+    if seasons_value == "all":
+        return "all"
+    # assume list
+    return [int(x) for x in seasons_value]
 
 
 async def _ensure_tmdb_id_for_movie(radarr: RadarrClient, query: str) -> int:

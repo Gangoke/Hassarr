@@ -92,8 +92,9 @@ class OverseerrClient(_BaseClient):
         return await self._request("GET", f"/api/v1/service/sonarr/{sonarr_id}")
 
     async def search(self, query: str) -> list[dict]:
-        from yarl import URL as _URL
-        qs = _URL.build(query=query).query_string.replace("query=", "")
+        # Overseerr requires URL-encoded query (strict: spaces as %20)
+        from urllib.parse import quote
+        qs = quote(query, safe="")
         j = await self._request("GET", f"/api/v1/search?query={qs}")
         if isinstance(j, dict) and "results" in j:
             return j.get("results") or []
@@ -176,8 +177,9 @@ class RadarrClient(_BaseArr):
             return False
 
     async def lookup(self, query: str) -> list[dict]:
-        from yarl import URL as _URL
-        qs = _URL.build(term=query).query_string
+        # Radarr expects a 'term' query parameter
+        from urllib.parse import urlencode
+        qs = urlencode({"term": query})
         return await self._request("GET", f"/api/v3/movie/lookup?{qs}")
 
     async def add_movie(self, tmdb_id: int, root: str, profile_id: int) -> dict:
@@ -190,6 +192,8 @@ class RadarrClient(_BaseArr):
             "title": m.get("title"),
             "year": m.get("year"),
             "titleSlug": m.get("titleSlug"),
+            # Optional identifiers when provided by Radarr lookup
+            "imdbId": m.get("imdbId"),
             "qualityProfileId": int(profile_id),
             "monitored": True,
             "rootFolderPath": root,
@@ -197,6 +201,13 @@ class RadarrClient(_BaseArr):
             "images": m.get("images", []),
         }
         return await self._request("POST", "/api/v3/movie", json=payload)
+
+    # New listing helpers for UI selections
+    async def list_root_folders(self) -> list[dict]:
+        return await self._request("GET", "/api/v3/rootfolder")
+
+    async def list_quality_profiles(self) -> list[dict]:
+        return await self._request("GET", "/api/v3/qualityprofile")
 
 
 class SonarrClient(_BaseArr):
@@ -210,8 +221,9 @@ class SonarrClient(_BaseArr):
             return False
 
     async def lookup(self, query: str) -> list[dict]:
-        from yarl import URL as _URL
-        qs = _URL.build(term=query).query_string
+        # Sonarr expects a 'term' query parameter
+        from urllib.parse import urlencode
+        qs = urlencode({"term": query})
         return await self._request("GET", f"/api/v3/series/lookup?{qs}")
 
     async def add_series(
@@ -219,7 +231,6 @@ class SonarrClient(_BaseArr):
         tmdb_id: int,
         root: str,
         quality_profile_id: int,
-        language_profile_id: Optional[int] = None,
         seasons: Optional[str | Iterable[int]] = None,
     ) -> dict:
         items = await self.lookup(f"tmdb:{tmdb_id}")
@@ -244,12 +255,24 @@ class SonarrClient(_BaseArr):
                 }
                 for sea in s.get("seasons", [])
             ],
+            # Sonarr requires a valid TvdbId; include if present from lookup
+            "tvdbId": int(s.get("tvdbId")) if s.get("tvdbId") else None,
+            # Include imdbId when available (harmless if omitted)
+            "imdbId": s.get("imdbId"),
             "rootFolderPath": root,
             "qualityProfileId": int(quality_profile_id),
-            "languageProfileId": int(language_profile_id) if language_profile_id else None,
             "monitored": True,
             "addOptions": {"searchForMissingEpisodes": True},
             "tmdbId": int(tmdb_id),
         }
         payload = {k: v for k, v in payload.items() if v is not None}
         return await self._request("POST", "/api/v3/series", json=payload)
+
+    # New listing helpers for UI selections
+    async def list_root_folders(self) -> list[dict]:
+        return await self._request("GET", "/api/v3/rootfolder")
+
+    async def list_quality_profiles(self) -> list[dict]:
+        return await self._request("GET", "/api/v3/qualityprofile")
+
+    # language profiles are deprecated in this integration

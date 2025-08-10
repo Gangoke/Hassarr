@@ -13,12 +13,34 @@
         }
       },
       "ovsr_creds": {
-        "title": "Overseerr — Credenciales",
-        "description": "Introduce la URL de Overseerr y la clave API; después seleccionarás valores predeterminados obtenidos en vivo.",
+        "title": "Overseerr - URL y Clave API",
+        "description": "",
         "data": {
           "base_url": "URL de Overseerr",
-          "api_key": "Clave API",
-          "default_tv_seasons": "Temporadas de TV predeterminadas"
+          "api_key": "Clave API de Overseerr"
+        }
+      },
+      "ovsr_select_servers": {
+        "title": "Overseerr - Servidores *arr predeterminados",
+        "description": "Servidores a usar cuando no se especifique ninguno.",
+        "data": {
+          "overseerr_radarr_server_id": "Servidor Radarr predeterminado de Overseerr",
+          "overseerr_sonarr_server_id": "Servidor Sonarr predeterminado de Overseerr"
+        }
+      },
+      "ovsr_select_profiles": {
+        "title": "Overseerr - Perfil predeterminado",
+        "description": "Perfil a usar cuando no se especifique ninguno.",
+        "data": {
+          "overseerr_profile_id_movie": "Perfil de película predeterminado de Overseerr",
+          "overseerr_profile_id_tv": "Perfil de TV predeterminado de Overseerr"
+        }
+      },
+      "ovsr_tv_seasons": {
+        "title": "Overseerr - Temporada de TV predeterminada",
+        "description": "Temporadas de TV a descargar cuando no se especifique.",
+        "data": {
+          "default_tv_seasons": ""
         },
         "data_options": {
           "default_tv_seasons": {
@@ -27,30 +49,37 @@
           }
         }
       },
-      "ovsr_selects": {
-  "title": "Overseerr — Valores predeterminados",
-        "description": "Elige un servidor y perfiles predeterminados (puedes cambiarlos luego en Opciones).",
-        "data": {
-          "overseerr_radarr_server_id": "Servidor Radarr predeterminado",
-          "overseerr_sonarr_server_id": "Servidor Sonarr predeterminado",
-          "overseerr_profile_id_movie": "Perfil de película predeterminado",
-          "overseerr_profile_id_tv": "Perfil de TV predeterminado"
-        }
-      },
       "arr_backend": {
-        "title": "Configuración de Radarr/Sonarr",
-        "description": "Introduce la configuración de Radarr y Sonarr.",
+        "title": "Radarr/Sonarr — URLs y Claves API",
+        "description": "",
         "data": {
           "radarr_url": "URL de Radarr",
           "radarr_api_key": "Clave API de Radarr",
-          "radarr_root": "Carpeta raíz de Radarr",
-          "radarr_quality_profile_id": "ID de perfil de calidad de Radarr",
           "sonarr_url": "URL de Sonarr",
-          "sonarr_api_key": "Clave API de Sonarr",
-          "sonarr_root": "Carpeta raíz de Sonarr",
-          "sonarr_quality_profile_id": "ID de perfil de calidad de Sonarr",
-          "sonarr_language_profile_id": "ID de perfil de idioma de Sonarr (opcional)",
-          "default_tv_seasons": "Temporadas de TV predeterminadas"
+          "sonarr_api_key": "Clave API de Sonarr"
+        }
+      },
+      "arr_select_roots": {
+        "title": "Radarr/Sonarr — Carpetas raíz predeterminadas",
+        "description": "Carpetas raíz a usar cuando no se especifique ninguna.",
+        "data": {
+          "radarr_root": "Carpeta raíz predeterminada de Radarr",
+          "sonarr_root": "Carpeta raíz predeterminada de Sonarr"
+        }
+      },
+      "arr_select_profiles": {
+        "title": "Radarr/Sonarr — Perfiles predeterminados",
+        "description": "Perfiles a usar cuando no se especifique ninguno.",
+        "data": {
+          "radarr_quality_profile_id": "Perfil de calidad predeterminado de Radarr",
+          "sonarr_quality_profile_id": "Perfil de calidad predeterminado de Sonarr"
+        }
+      },
+      "arr_tv_seasons": {
+        "title": "Radarr/Sonarr — Temporada de TV predeterminada",
+        "description": "Temporadas de TV a descargar cuando no se especifique.",
+        "data": {
+          "default_tv_seasons": ""
         },
         "data_options": {
           "default_tv_seasons": {

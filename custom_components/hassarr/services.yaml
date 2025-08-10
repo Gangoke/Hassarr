@@ -11,23 +11,22 @@ request_media:
       required: true
       selector:
         select:
-          options: [movie, tv, show]
-      description: "'movie' or 'tv' (you can also say 'show')."
+          options:
+            - movie
+            - tv
+      description: "'movie' or 'tv'"
     seasons:
       required: false
       selector:
         text: {}
       description: >
-        TV only. 'all' for all seasons, or a JSON-like list e.g. [1,2,5] for specific seasons. If
-        omitted, the integration uses your default (Season 1 or All).
+        TV only. 'all' for all seasons, or a JSON-like list e.g. [1,2,5] for specific seasons. If omitted, the integration uses your default (Season 1 or All).
     is_4k:
       required: false
       default: false
       selector:
         boolean: {}
       description: Overseerr backend only.
-
-    # Overseerr-only overrides
     overseerr_server_id:
       required: false
       selector:
@@ -42,27 +41,14 @@ request_media:
           min: 1
           mode: box
       description: Overseerr profile ID (Radarr for movies, Sonarr for TV).
-
-    # ARR-only optional overrides/presets
-    profile_preset:
-      required: false
-      selector:
-        text: {}
-      description: Name of a preset configured in Options (e.g., "UHD", "Kids"). ARR backend only.
     quality_profile_id:
       required: false
       selector:
         number:
           min: 1
-      description: Override ARR quality profile id for this request.
-    language_profile_id:
-      required: false
-      selector:
-        number:
-          min: 1
-      description: Override Sonarr language profile id for this TV request.
+      description: Override ARR quality profile id for this request. If omitted, uses the current select entity.
     root_folder_path:
       required: false
       selector:
         text: {}
-      description: Override root folder path for this request.
+      description: Override root folder path for this request. If omitted, uses the current select entity.

@@ -1,6 +1,6 @@
 {
   "domain": "hassarr",
-  "name": "Hassarr Media Requests (Overseerr / Sonarr+Radarr)",
+  "name": "Hassarr",
   "version": "0.6.0",
   "config_flow": true,
   "documentation": "https://github.com/Gangoke/Hassarr",

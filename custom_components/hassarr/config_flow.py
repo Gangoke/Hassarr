@@ -18,7 +18,7 @@ from .const import (
     CONF_BACKEND,
     CONF_BASE_URL, CONF_API_KEY,
     CONF_RADARR_URL, CONF_RADARR_KEY, CONF_RADARR_ROOT, CONF_RADARR_PROFILE,
-    CONF_SONARR_URL, CONF_SONARR_KEY, CONF_SONARR_ROOT, CONF_SONARR_PROFILE, CONF_SONARR_LANG_PROFILE,
+    CONF_SONARR_URL, CONF_SONARR_KEY, CONF_SONARR_ROOT, CONF_SONARR_PROFILE,
     CONF_PRESETS, CONF_DEFAULT_TV_SEASONS,
     CONF_OVERSEERR_SERVER_ID, CONF_OVERSEERR_SERVER_ID_RADARR, CONF_OVERSEERR_SERVER_ID_SONARR,
     CONF_OVERSEERR_PROFILE_ID_MOVIE, CONF_OVERSEERR_PROFILE_ID_TV,
@@ -69,6 +69,9 @@ async def _option_labels(
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 6
+    _backend_choice: str | None = None
+    _tmp_data: Dict[str, Any] | None = None
+    _ovsr_servers: Dict[str, int] | None = None
 
     async def async_step_user(self, user_input: Dict[str, Any] | None = None):
         errors: Dict[str, str] = {}
@@ -107,19 +110,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required(CONF_BASE_URL): str,
             vol.Required(CONF_API_KEY): str,
-            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=["season1", "all"],
-                    translation_key="default_tv_seasons",
-                    mode=selector.SelectSelectorMode.LIST,
-                )
-            ),
         })
         if user_input is not None:
             base_url = user_input[CONF_BASE_URL].strip()
             api_key = user_input[CONF_API_KEY].strip()
-            default_tv = user_input[CONF_DEFAULT_TV_SEASONS]
-
             if not _valid_url(base_url):
                 errors["base"] = "invalid_url"
             else:
@@ -129,185 +123,115 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     if not await client.ping():
                         raise RuntimeError("ping failed")
-                    radarr = await client.list_radarr()
-                    sonarr = await client.list_sonarr()
-                    movie_profiles: dict[str, str] = {}
-                    tv_profiles: dict[str, str] = {}
-                    # Try to get profiles from defaults or first available
-                    default_radarr = next((s for s in radarr if s.get("isDefault")), radarr[0] if radarr else None)
-                    default_sonarr = next((s for s in sonarr if s.get("isDefault")), sonarr[0] if sonarr else None)
-                    if default_radarr:
-                        det_r = await client.get_radarr_details(default_radarr["id"])
-                        movie_profiles = {str(p["id"]): p["name"] for p in (det_r.get("profiles") or [])}
-                    if default_sonarr:
-                        det_s = await client.get_sonarr_details(default_sonarr["id"])
-                        tv_profiles = {str(p["id"]): p["name"] for p in (det_s.get("profiles") or [])}
-                    self._ovsr_ctx = {
-                        "base_url": base_url,
-                        "api_key": api_key,
-                        "default_tv": default_tv,
-                        "radarr": radarr,
-                        "sonarr": sonarr,
-                        "movie_profiles": movie_profiles,
-                        "tv_profiles": tv_profiles,
+                    host_id = base_url.split("://", 1)[-1].rstrip('/')
+                    await self.async_set_unique_id(f"overseerr:{host_id}")
+                    self._abort_if_unique_id_configured()
+                    # Stash and go to server/profile selection
+                    self._tmp_data = {
+                        CONF_BACKEND: "overseerr",
+                        CONF_BASE_URL: base_url,
+                        CONF_API_KEY: api_key,
                     }
-                    return await self.async_step_ovsr_selects()
+                    return await self.async_step_ovsr_select_servers()
                 except Exception:  # noqa: BLE001
                     errors["base"] = "cannot_connect"
 
         return self.async_show_form(step_id="ovsr_creds", data_schema=schema, errors=errors)
 
-    async def async_step_ovsr_selects(self, user_input: Dict[str, Any] | None = None):
-        ctx = getattr(self, "_ovsr_ctx", {})
+    async def async_step_ovsr_select_servers(self, user_input: Dict[str, Any] | None = None):
+        assert self._tmp_data and self._tmp_data.get(CONF_BACKEND) == "overseerr"
         errors: Dict[str, str] = {}
-
-        # Build choices for servers (fetch if not present)
-        radarr = ctx.get("radarr") or []
-        sonarr = ctx.get("sonarr") or []
-        if not radarr and not sonarr and ctx.get("base_url") and ctx.get("api_key"):
-            try:
-                from .api_common import OverseerrClient
-                session = async_get_clientsession(self.hass)
-                client = OverseerrClient(ctx["base_url"], ctx["api_key"], session)
-                if await client.ping():
-                    radarr = await client.list_radarr()
-                    sonarr = await client.list_sonarr()
-                    ctx["radarr"], ctx["sonarr"] = radarr, sonarr
-            except Exception:  # noqa: BLE001
-                pass
-
-        # Choices for servers
-        radarr_server_choices: dict[str, str] = {}
-        for s in radarr:
-            radarr_server_choices[f"Radarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
-        sonarr_server_choices: dict[str, str] = {}
-        for s in sonarr:
-            sonarr_server_choices[f"Sonarr: {s.get('name','Unnamed')} (#{s['id']})"] = str(s["id"])  # label -> id
-
-        if not radarr_server_choices and not sonarr_server_choices:
-            errors["base"] = "overseerr_choices_missing"
-
-        # Determine selected server IDs (from user input or defaults) and fetch profiles for them
-        sel_radarr_id = None
-        sel_sonarr_id = None
+        # Fetch servers and default profiles
+        from .api_common import OverseerrClient
+        session = async_get_clientsession(self.hass)
+        client = OverseerrClient(self._tmp_data[CONF_BASE_URL], self._tmp_data[CONF_API_KEY], session)
         try:
-            if user_input and user_input.get(CONF_OVERSEERR_SERVER_ID_RADARR) is not None:
-                sel_radarr_id = int(user_input[CONF_OVERSEERR_SERVER_ID_RADARR])
-            else:
-                sel_radarr_id = int(ctx.get("selected_radarr_id") or (radarr[0]["id"] if radarr else 0)) or None
-        except Exception:
-            sel_radarr_id = None
-        try:
-            if user_input and user_input.get(CONF_OVERSEERR_SERVER_ID_SONARR) is not None:
-                sel_sonarr_id = int(user_input[CONF_OVERSEERR_SERVER_ID_SONARR])
-            else:
-                sel_sonarr_id = int(ctx.get("selected_sonarr_id") or (sonarr[0]["id"] if sonarr else 0)) or None
-        except Exception:
-            sel_sonarr_id = None
-        if sel_radarr_id:
-            ctx["selected_radarr_id"] = sel_radarr_id
-        if sel_sonarr_id:
-            ctx["selected_sonarr_id"] = sel_sonarr_id
+            radarr = await client.list_radarr()
+            sonarr = await client.list_sonarr()
+        except Exception:  # noqa: BLE001
+            radarr, sonarr = [], []
 
-        # Fetch profiles for the selected servers
-        movie_profile_choices: dict[str, str] = {}
-        tv_profile_choices: dict[str, str] = {}
-        if ctx.get("base_url") and ctx.get("api_key"):
-            try:
-                from .api_common import OverseerrClient
-                session = async_get_clientsession(self.hass)
-                client = OverseerrClient(ctx["base_url"], ctx["api_key"], session)
-                if sel_radarr_id:
-                    det_r = await client.get_radarr_details(sel_radarr_id)
-                    movie_profile_choices = {p["name"]: str(p["id"]) for p in (det_r.get("profiles") or [])}
-                if sel_sonarr_id:
-                    det_s = await client.get_sonarr_details(sel_sonarr_id)
-                    tv_profile_choices = {p["name"]: str(p["id"]) for p in (det_s.get("profiles") or [])}
-            except Exception:  # noqa: BLE001
-                pass
+        def _first_or_default(srvs: list[dict]) -> dict | None:
+            return next((s for s in srvs if s.get("isDefault")), srvs[0] if srvs else None)
 
-        if not movie_profile_choices or not tv_profile_choices:
-            errors["base"] = errors.get("base") or "overseerr_choices_missing"
-
-        # Defaults: selected servers and first profile for each
-        radarr_server_default = str(sel_radarr_id) if sel_radarr_id else (str(radarr[0]["id"]) if radarr else None)
-        sonarr_server_default = str(sel_sonarr_id) if sel_sonarr_id else (str(sonarr[0]["id"]) if sonarr else None)
-        movie_default = (
-            (user_input.get(CONF_OVERSEERR_PROFILE_ID_MOVIE) if user_input else None)
-            or next(iter(movie_profile_choices.values()), None)
-        )
-        tv_default = (
-            (user_input.get(CONF_OVERSEERR_PROFILE_ID_TV) if user_input else None)
-            or next(iter(tv_profile_choices.values()), None)
-        )
-
-        # Helper for required keys with defaults
-        def req(key: Any, default: str | None):
-            return vol.Required(key, default=default) if default is not None else vol.Required(key)
-
-        # Build option lists
-        radarr_server_options = [{"label": l, "value": v} for l, v in radarr_server_choices.items()]
-        sonarr_server_options = [{"label": l, "value": v} for l, v in sonarr_server_choices.items()]
-        movie_profile_options = [{"label": l, "value": v} for l, v in movie_profile_choices.items()]
-        tv_profile_options = [{"label": l, "value": v} for l, v in tv_profile_choices.items()]
+        default_radarr = _first_or_default(radarr)
+        default_sonarr = _first_or_default(sonarr)
 
         schema = vol.Schema({
-            req(CONF_OVERSEERR_SERVER_ID_RADARR, radarr_server_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=radarr_server_options, mode=selector.SelectSelectorMode.LIST)
+            vol.Required(CONF_OVERSEERR_SERVER_ID_RADARR, default=(str(default_radarr["id"]) if default_radarr else None)): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": f"{s.get('name','Radarr')} (#{s['id']})", "value": str(s["id"]).strip()} for s in radarr],
+                    mode=selector.SelectSelectorMode.LIST,
+                )
             ),
-            req(CONF_OVERSEERR_SERVER_ID_SONARR, sonarr_server_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=sonarr_server_options, mode=selector.SelectSelectorMode.LIST)
-            ),
-            req(CONF_OVERSEERR_PROFILE_ID_MOVIE, movie_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=movie_profile_options, mode=selector.SelectSelectorMode.DROPDOWN)
-            ),
-            req(CONF_OVERSEERR_PROFILE_ID_TV, tv_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=tv_profile_options, mode=selector.SelectSelectorMode.DROPDOWN)
+            vol.Required(CONF_OVERSEERR_SERVER_ID_SONARR, default=(str(default_sonarr["id"]) if default_sonarr else None)): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": f"{s.get('name','Sonarr')} (#{s['id']})", "value": str(s["id"]).strip()} for s in sonarr],
+                    mode=selector.SelectSelectorMode.LIST,
+                )
             ),
         })
 
-        # Finalize only when all four values are provided by the user (ensures profile lists reflect chosen servers)
-        if user_input is not None and all(
-            k in user_input for k in (
-                CONF_OVERSEERR_SERVER_ID_RADARR,
-                CONF_OVERSEERR_SERVER_ID_SONARR,
-                CONF_OVERSEERR_PROFILE_ID_MOVIE,
-                CONF_OVERSEERR_PROFILE_ID_TV,
-            )
-        ) and not errors:
-            data = {
-                CONF_BACKEND: "overseerr",
-                CONF_BASE_URL: ctx["base_url"],
-                CONF_API_KEY: ctx["api_key"],
-                CONF_DEFAULT_TV_SEASONS: ctx["default_tv"],
-                CONF_OVERSEERR_SERVER_ID_RADARR: int(user_input[CONF_OVERSEERR_SERVER_ID_RADARR]),
-                CONF_OVERSEERR_SERVER_ID_SONARR: int(user_input[CONF_OVERSEERR_SERVER_ID_SONARR]),
-                CONF_OVERSEERR_PROFILE_ID_MOVIE: int(user_input[CONF_OVERSEERR_PROFILE_ID_MOVIE]),
-                CONF_OVERSEERR_PROFILE_ID_TV: int(user_input[CONF_OVERSEERR_PROFILE_ID_TV]),
+        if user_input is not None:
+            self._ovsr_servers = {
+                "radarr": int(user_input[CONF_OVERSEERR_SERVER_ID_RADARR]),
+                "sonarr": int(user_input[CONF_OVERSEERR_SERVER_ID_SONARR]),
             }
-            # Preserve legacy single server id if both selected servers are identical to allow fallback elsewhere
-            if data[CONF_OVERSEERR_SERVER_ID_RADARR] == data[CONF_OVERSEERR_SERVER_ID_SONARR]:
-                data[CONF_OVERSEERR_SERVER_ID] = data[CONF_OVERSEERR_SERVER_ID_RADARR]
-            host_id = ctx["base_url"].split("://", 1)[-1].rstrip('/')
-            await self.async_set_unique_id(f"overseerr:{host_id}")
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title="Hassarr (Overseerr)", data=data)
+            return await self.async_step_ovsr_select_profiles()
 
-        return self.async_show_form(step_id="ovsr_selects", data_schema=schema, errors=errors)
+        return self.async_show_form(step_id="ovsr_select_servers", data_schema=schema, errors=errors)
 
-    async def async_step_arr_backend(self, user_input: Dict[str, Any] | None = None):
+    async def async_step_ovsr_select_profiles(self, user_input: Dict[str, Any] | None = None):
+        assert self._tmp_data and self._ovsr_servers
         errors: Dict[str, str] = {}
+        # Fetch profiles for chosen servers
+        from .api_common import OverseerrClient
         session = async_get_clientsession(self.hass)
+        client = OverseerrClient(self._tmp_data[CONF_BASE_URL], self._tmp_data[CONF_API_KEY], session)
+        movie_profiles: list[dict] = []
+        tv_profiles: list[dict] = []
+        try:
+            det = await client.get_radarr_details(self._ovsr_servers["radarr"])
+            movie_profiles = det.get("profiles") or []
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            det = await client.get_sonarr_details(self._ovsr_servers["sonarr"])
+            tv_profiles = det.get("profiles") or []
+        except Exception:  # noqa: BLE001
+            pass
+
         schema = vol.Schema({
-            vol.Required(CONF_RADARR_URL): str,
-            vol.Required(CONF_RADARR_KEY): str,
-            vol.Required(CONF_RADARR_ROOT): str,
-            vol.Required(CONF_RADARR_PROFILE): vol.Coerce(int),
-            vol.Required(CONF_SONARR_URL): str,
-            vol.Required(CONF_SONARR_KEY): str,
-            vol.Required(CONF_SONARR_ROOT): str,
-            vol.Required(CONF_SONARR_PROFILE): vol.Coerce(int),
-            vol.Optional(CONF_SONARR_LANG_PROFILE): vol.Coerce(int),
+            vol.Required(CONF_OVERSEERR_PROFILE_ID_MOVIE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": p.get("name"), "value": str(p.get("id"))} for p in movie_profiles],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_OVERSEERR_PROFILE_ID_TV): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": p.get("name"), "value": str(p.get("id"))} for p in tv_profiles],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        })
+
+        if user_input is not None:
+            # Stash for next step (TV seasons)
+            data = dict(self._tmp_data)
+            data[CONF_OVERSEERR_SERVER_ID_RADARR] = self._ovsr_servers["radarr"]
+            data[CONF_OVERSEERR_SERVER_ID_SONARR] = self._ovsr_servers["sonarr"]
+            data[CONF_OVERSEERR_PROFILE_ID_MOVIE] = int(user_input[CONF_OVERSEERR_PROFILE_ID_MOVIE])
+            data[CONF_OVERSEERR_PROFILE_ID_TV] = int(user_input[CONF_OVERSEERR_PROFILE_ID_TV])
+            self._tmp_data = data
+            return await self.async_step_ovsr_tv_seasons()
+
+        return self.async_show_form(step_id="ovsr_select_profiles", data_schema=schema, errors=errors)
+
+    async def async_step_ovsr_tv_seasons(self, user_input: Dict[str, Any] | None = None):
+        assert self._tmp_data and self._tmp_data.get(CONF_BACKEND) == "overseerr"
+        errors: Dict[str, str] = {}
+        schema = vol.Schema({
             vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=["season1", "all"],
@@ -316,19 +240,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             ),
         })
+        if user_input is not None:
+            data = dict(self._tmp_data)
+            data[CONF_DEFAULT_TV_SEASONS] = user_input[CONF_DEFAULT_TV_SEASONS]
+            title = "Hassarr (Overseerr)"
+            self._tmp_data = None
+            self._ovsr_servers = None
+            return self.async_create_entry(title=title, data=data)
+        return self.async_show_form(step_id="ovsr_tv_seasons", data_schema=schema, errors=errors)
+
+    async def async_step_arr_backend(self, user_input: Dict[str, Any] | None = None):
+        errors: Dict[str, str] = {}
+        session = async_get_clientsession(self.hass)
+        schema = vol.Schema({
+            vol.Required(CONF_RADARR_URL): str,
+            vol.Required(CONF_RADARR_KEY): str,
+            vol.Required(CONF_SONARR_URL): str,
+            vol.Required(CONF_SONARR_KEY): str,
+        })
 
         if user_input is not None:
             radarr_url = user_input[CONF_RADARR_URL].strip()
             radarr_key = user_input[CONF_RADARR_KEY].strip()
-            radarr_root = user_input[CONF_RADARR_ROOT].strip()
-            radarr_prof = int(user_input[CONF_RADARR_PROFILE])
 
             sonarr_url = user_input[CONF_SONARR_URL].strip()
             sonarr_key = user_input[CONF_SONARR_KEY].strip()
-            sonarr_root = user_input[CONF_SONARR_ROOT].strip()
-            sonarr_prof = int(user_input[CONF_SONARR_PROFILE])
-            sonarr_lang = user_input.get(CONF_SONARR_LANG_PROFILE)
-            default_tv = user_input[CONF_DEFAULT_TV_SEASONS]
 
             if not (_valid_url(radarr_url) and _valid_url(sonarr_url)):
                 errors["base"] = "invalid_url"
@@ -340,23 +276,121 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     host_id = f"{radarr_url.split('://',1)[-1]}|{sonarr_url.split('://',1)[-1]}".rstrip('/')
                     await self.async_set_unique_id(f"arr:{host_id}")
                     self._abort_if_unique_id_configured()
-                    data = {
+                    self._tmp_data = {
                         CONF_BACKEND: "arr",
                         CONF_RADARR_URL: radarr_url,
                         CONF_RADARR_KEY: radarr_key,
-                        CONF_RADARR_ROOT: radarr_root,
-                        CONF_RADARR_PROFILE: radarr_prof,
                         CONF_SONARR_URL: sonarr_url,
                         CONF_SONARR_KEY: sonarr_key,
-                        CONF_SONARR_ROOT: sonarr_root,
-                        CONF_SONARR_PROFILE: sonarr_prof,
-                        CONF_SONARR_LANG_PROFILE: int(sonarr_lang) if sonarr_lang else None,
-                        CONF_DEFAULT_TV_SEASONS: default_tv,
                     }
-                    return self.async_create_entry(title="Hassarr (Sonarr/Radarr)", data=data)
+                    return await self.async_step_arr_select_roots()
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(step_id="arr_backend", data_schema=schema, errors=errors)
+
+    async def async_step_arr_select_roots(self, user_input: Dict[str, Any] | None = None):
+        assert self._tmp_data and self._tmp_data.get(CONF_BACKEND) == "arr"
+        errors: Dict[str, str] = {}
+        from .api_common import RadarrClient, SonarrClient
+        session = async_get_clientsession(self.hass)
+        rc = RadarrClient(self._tmp_data[CONF_RADARR_URL], self._tmp_data[CONF_RADARR_KEY], session)
+        sc = SonarrClient(self._tmp_data[CONF_SONARR_URL], self._tmp_data[CONF_SONARR_KEY], session)
+        radarr_roots = []
+        sonarr_roots = []
+        try:
+            radarr_roots = await rc.list_root_folders()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            sonarr_roots = await sc.list_root_folders()
+        except Exception:  # noqa: BLE001
+            pass
+
+        schema = vol.Schema({
+            vol.Required(CONF_RADARR_ROOT): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": r.get("path"), "value": r.get("path")} for r in radarr_roots],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_SONARR_ROOT): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": r.get("path"), "value": r.get("path")} for r in sonarr_roots],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        })
+
+        if user_input is not None:
+            data = dict(self._tmp_data)
+            data[CONF_RADARR_ROOT] = user_input[CONF_RADARR_ROOT]
+            data[CONF_SONARR_ROOT] = user_input[CONF_SONARR_ROOT]
+            self._tmp_data = data
+            return await self.async_step_arr_select_profiles()
+
+        return self.async_show_form(step_id="arr_select_roots", data_schema=schema, errors=errors)
+
+    async def async_step_arr_select_profiles(self, user_input: Dict[str, Any] | None = None):
+        assert self._tmp_data and self._tmp_data.get(CONF_BACKEND) == "arr"
+        errors: Dict[str, str] = {}
+        from .api_common import RadarrClient, SonarrClient
+        session = async_get_clientsession(self.hass)
+        rc = RadarrClient(self._tmp_data[CONF_RADARR_URL], self._tmp_data[CONF_RADARR_KEY], session)
+        sc = SonarrClient(self._tmp_data[CONF_SONARR_URL], self._tmp_data[CONF_SONARR_KEY], session)
+        radarr_qprofiles = []
+        sonarr_qprofiles = []
+        try:
+            radarr_qprofiles = await rc.list_quality_profiles()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            sonarr_qprofiles = await sc.list_quality_profiles()
+        except Exception:  # noqa: BLE001
+            pass
+
+        schema = vol.Schema({
+            vol.Required(CONF_RADARR_PROFILE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": p.get("name"), "value": str(p.get("id"))} for p in radarr_qprofiles],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_SONARR_PROFILE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"label": p.get("name"), "value": str(p.get("id"))} for p in sonarr_qprofiles],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        })
+
+        if user_input is not None:
+            data = dict(self._tmp_data)
+            data[CONF_RADARR_PROFILE] = int(user_input[CONF_RADARR_PROFILE])
+            data[CONF_SONARR_PROFILE] = int(user_input[CONF_SONARR_PROFILE])
+            self._tmp_data = data
+            return await self.async_step_arr_tv_seasons()
+
+        return self.async_show_form(step_id="arr_select_profiles", data_schema=schema, errors=errors)
+
+    async def async_step_arr_tv_seasons(self, user_input: Dict[str, Any] | None = None):
+        assert self._tmp_data and self._tmp_data.get(CONF_BACKEND) == "arr"
+        errors: Dict[str, str] = {}
+        schema = vol.Schema({
+            vol.Required(CONF_DEFAULT_TV_SEASONS, default="season1"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["season1", "all"],
+                    translation_key="default_tv_seasons",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
+        })
+        if user_input is not None:
+            data = dict(self._tmp_data)
+            data[CONF_DEFAULT_TV_SEASONS] = user_input[CONF_DEFAULT_TV_SEASONS]
+            title = "Hassarr (Sonarr/Radarr)"
+            self._tmp_data = None
+            return self.async_create_entry(title=title, data=data)
+        return self.async_show_form(step_id="arr_tv_seasons", data_schema=schema, errors=errors)
 
 
 @callback
@@ -425,7 +459,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_DEFAULT_TV_SEASONS: user_input[CONF_DEFAULT_TV_SEASONS],
                 }
                 if self.entry.data.get(CONF_BACKEND) == "overseerr":
-                    # New separate defaults; keep legacy if provided
+                    # Selections are primarily managed via Select entities, but allow options to be set here too.
                     sid_r = user_input.get(CONF_OVERSEERR_SERVER_ID_RADARR)
                     if sid_r:
                         out[CONF_OVERSEERR_SERVER_ID_RADARR] = int(sid_r)

@@ -7,6 +7,7 @@ import voluptuous as vol
 import logging
 from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers import selector
+from yarl import URL
 
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -31,6 +32,33 @@ URL_RE = re.compile(r"^https?://", re.I)
 
 def _valid_url(url: str) -> bool:
     return bool(URL_RE.match(url.strip()))
+
+
+def _safe_host_id(url: str) -> str:
+    """Return a normalized host:port identifier without userinfo or path.
+
+    Ensures we never persist credentials from URLs into the config registry.
+    """
+    try:
+        u = URL(url)
+        host = u.host or ""
+        # Normalize port so http/https defaults are explicit
+        if u.port is not None:
+            port = u.port
+        else:
+            port = 443 if (u.scheme or "").lower() == "https" else 80
+        return f"{host}:{port}"
+    except Exception:  # noqa: BLE001
+        # Fallback: very conservative extraction
+        try:
+            netloc = url.split("//", 1)[-1]
+            netloc = netloc.split("/", 1)[0]
+            # Strip potential userinfo@
+            netloc = netloc.split("@", 1)[-1]
+            host_only = netloc.split("?", 1)[0]
+            return host_only
+        except Exception:  # noqa: BLE001
+            return "unknown"
 
 
 async def _option_labels(
@@ -123,7 +151,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     if not await client.ping():
                         raise RuntimeError("ping failed")
-                    host_id = base_url.split("://", 1)[-1].rstrip('/')
+                    host_id = _safe_host_id(base_url)
                     await self.async_set_unique_id(f"overseerr:{host_id}")
                     self._abort_if_unique_id_configured()
                     # Stash and go to server/profile selection
@@ -273,7 +301,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 rc = RadarrClient(radarr_url, radarr_key, session)
                 sc = SonarrClient(sonarr_url, sonarr_key, session)
                 if await rc.ping() and await sc.ping():
-                    host_id = f"{radarr_url.split('://',1)[-1]}|{sonarr_url.split('://',1)[-1]}".rstrip('/')
+                    host_id = f"{_safe_host_id(radarr_url)}|{_safe_host_id(sonarr_url)}"
                     await self.async_set_unique_id(f"arr:{host_id}")
                     self._abort_if_unique_id_configured()
                     self._tmp_data = {
